@@ -210,6 +210,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
 
 class MiniApp(QtWidgets.QWidget):
+    """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
     def __init__(self, parent = None):
         super(MiniApp, self).__init__(parent=parent)
         self.setLayout(QtWidgets.QHBoxLayout())

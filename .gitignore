@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pylintrc
+isimgui-venv
+isimgui.code-workspace
+Tests
+.vscode
