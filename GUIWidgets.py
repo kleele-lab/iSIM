@@ -112,7 +112,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.stage_pos = new_pos
         pos = self.rectangle_pos(new_pos)
         self.rect = QtCore.QRectF(pos[0], pos[1], self.fov_size[0], self.fov_size[1])
-        self.painter.drawRect(self.rect)
+        # self.painter.drawRect(self.rect)
         self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
         self.now_rect.setPos(QtCore.QPointF(pos[0], pos[1]))
         self.set_oof_arrow()
