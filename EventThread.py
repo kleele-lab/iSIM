@@ -4,6 +4,7 @@ import re
 import zmq
 import json
 from PyQt5.QtCore import QObject, pyqtSignal
+import time
 
 def main():
     thread = EventThread()
@@ -14,28 +15,38 @@ class EventThread(QObject):
     xy_stage_position_changed_event = pyqtSignal(tuple)
     stage_position_changed_event = pyqtSignal(float)
 
-
     def __init__(self):
         super().__init__()
-        self.topics = ["StandardEvent"]
-
 
         self.bridge = Bridge()
-
         #PUB/SUB
         context = zmq.Context()
         self.socket = context.socket(zmq.SUB)
         self.socket.connect("tcp://localhost:5556")
+        self.socket.setsockopt(zmq.RCVTIMEO, 1000) # TImeout for the recv() function
+
+        self.thread_stop = threading.Event()
+
+        self.topics = ["StandardEvent"]
         for topic in self.topics:
             self.socket.setsockopt_string(zmq.SUBSCRIBE, topic)
-        self.socket.setsockopt(zmq.RCVTIMEO, 1000)
 
-    def run(self, daemon = True):
-        thread = threading.Thread(target=self.main_thread, daemon=daemon)
-        thread.start()
 
-    def main_thread(self):
-        while True:
+    def start(self, daemon = True):
+
+        self.thread = threading.Thread(target=self.main_thread,
+                                       args=(self.thread_stop, ),
+                                       daemon=daemon)
+        self.thread.start()
+
+    def stop(self):
+        self.thread_stop.set()
+        print('Closing socket')
+
+        self.thread.join()
+
+    def main_thread(self, thread_stop):
+        while not thread_stop.wait(0):
             try:
                 #  Get the reply.
                 reply = str(self.socket.recv())
@@ -61,13 +72,10 @@ class EventThread(QObject):
                     self.xy_stage_position_changed_event.emit((evt.get_x_pos(), evt.get_y_pos()))
                 else:
                     print('This event is not known yet')
-
-            except KeyboardInterrupt:
-                print('Closing socket')
-                self.socket.close()
-                break
             except zmq.error.Again:
                 pass
+        # Thread was stopped, let's also close the socket then
+        self.socket.close()
 
 if __name__ == '__main__':
     main()

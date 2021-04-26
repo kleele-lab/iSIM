@@ -1,12 +1,17 @@
 import sys
 from PyQt5 import QtGui, QtCore, QtWidgets, QtTest
 
+
 class Colors(object):
+    """ Defines colors for easy access in all widgets. """
     def __init__(self):
         self.blue = QtGui.QColor(25, 180, 210, alpha = 150)
 
 
 class FocusSlider(QtWidgets.QSlider):
+
+    z_stage_position_python = QtCore.pyqtSignal(float)
+
     def __init__(self, parent=None):
         super(FocusSlider, self).__init__(QtCore.Qt.Vertical, parent=parent)
         self.focusPos = 50
@@ -14,6 +19,11 @@ class FocusSlider(QtWidgets.QSlider):
         self.setStyleSheet(self.stylesheet())
         self.arrows = self.getArrows()
         self.setMaximum(20200)
+        self.valueChanged.connect(self.z_value_changed)
+
+    def z_value_changed(self, pos):
+        self.repaint()
+        self.z_stage_position_python.emit(pos/100)
 
     def paintEvent(self, e):
         super().paintEvent(e)
@@ -27,7 +37,8 @@ class FocusSlider(QtWidgets.QSlider):
         qp.drawText(93 , self.handlePos()+18 , str(self.zPos()))
 
     def wheelEvent(self,event):
-        self.setValue(self.value()+int((event.angleDelta().y()/120)*self.step))
+        pos = self.value()+int((event.angleDelta().y()/120)*self.step)
+        self.setValue(pos)
 
     def keyPressEvent(self, event):
         if event.key() == 16777220:
@@ -65,13 +76,16 @@ class PositionHistory(QtWidgets.QGraphicsView):
     been for the given sample. It visualizes the time spent at a specific position on a grid
     with rectangles that get brighter for the more time spent at a position. This is also
     dependent on if the laser light was on at the given time."""
+    xy_stage_position_python = QtCore.pyqtSignal(object)
 
     def __init__(self, parent=None):
         super(PositionHistory, self).__init__(QtWidgets.QGraphicsScene(), parent=parent)
         # Set the properties for the window so that everything is shown and we don't have Scrollbars
-        self.setBaseSize(1000, 1000)
-        self.fitInView(0, 25, 1000, 950, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-        self.setSceneRect(0, 25, 1000, 950)
+        self.view_size = (1500, 1500)
+        self.setBaseSize(self.view_size[0], self.view_size[1])
+        self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
+                       QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -79,7 +93,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         # Initialize the position of the stage and the parameters
         self.stage_pos = [0, 0]
         self.fov_size = (81, 81)
-        self.sample_size = (1000, 1000)
+        self.sample_size = self.view_size
         pos = self.rectangle_pos(self.stage_pos)
 
         # Get the components of the GUI ready
@@ -116,6 +130,8 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
         self.now_rect.setPos(QtCore.QPointF(pos[0], pos[1]))
         self.set_oof_arrow()
+        self.repaint()
+        self.xy_stage_position_python.emit(new_pos)
 
     def rectangle_pos(self, pos):
         rect_pos = [int(self.sample_size[0]*0.5 + pos[0] - self.fov_size[0]/2),
@@ -208,9 +224,15 @@ class PositionHistory(QtWidgets.QGraphicsView):
             self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
             self.painter = self.define_painter()
 
+    def resizeEvent(self, event):
+        self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
+        self.setBaseSize(self.view_size[0], self.view_size[1])
+        self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
+                       QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+
 
 class MiniApp(QtWidgets.QWidget):
-    """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
+    """ Makes a mini App that shows off the capabilities of the Widgets implemented here """
     def __init__(self, parent = None):
         super(MiniApp, self).__init__(parent=parent)
         self.setLayout(QtWidgets.QHBoxLayout())
@@ -222,11 +244,6 @@ class MiniApp(QtWidgets.QWidget):
 if __name__ == '__main__':
     import time
     app = QtWidgets.QApplication(sys.argv)
-    # widget = FocusSlider()
-    # widget = PositionHistory()
-    # widget.stage_moved([70,100])
-    # widget.stage_moved([-300,-100])
-    # widget.show()
     miniapp = MiniApp()
     miniapp.show()
     sys.exit(app.exec_())
