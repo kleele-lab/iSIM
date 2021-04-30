@@ -1,6 +1,6 @@
 import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
-from GUIWidgets import LiveView, PositionHistory, FocusSlider
+from GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget
 from EventThread import EventThread
 from PyQt5 import QtWidgets
 import sys
@@ -14,7 +14,8 @@ class MiniApp(QtWidgets.QWidget):
         super(MiniApp, self).__init__(parent=parent)
         self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
-        self.live_view = LiveView()
+        # self.live_view = LiveView()
+        self.alignment_widget = AlignmentWidget()
         self.event_thread = EventThread()
         self.mm_interface = MicroManagerControl.MicroManagerControl()
 
@@ -32,7 +33,8 @@ class MiniApp(QtWidgets.QWidget):
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self.position_history)
         self.layout().addWidget(self.focus_slider)
-        self.layout().addWidget(self.live_view)
+        # self.layout().addWidget(self.live_view)
+        self.layout().addWidget(self.alignment_widget)
         self.setStyleSheet("background-color:black;")
 
     @pyqtSlot(float)
@@ -67,7 +69,8 @@ class MiniApp(QtWidgets.QWidget):
 
     @pyqtSlot(object)
     def set_image(self, image):
-        self.live_view.set_qimage(self.mm_interface.convert_image(image))
+        # self.live_view.set_qimage(self.mm_interface.convert_image(image))
+        self.alignment_widget.add_image(image)
 
     @pyqtSlot(str, str, str)
     def handle_settings(self, device, deviceProperty, value):

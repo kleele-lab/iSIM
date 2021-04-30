@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "..\\SmartMicro"
+		},
+		{
+			"path": "..\\QtToolbox"
 		}
 	],
 	"settings": {}

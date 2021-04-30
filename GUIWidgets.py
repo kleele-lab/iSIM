@@ -1,6 +1,10 @@
 import sys
 from PyQt5 import QtGui, QtCore, QtWidgets, QtTest
-import pyqtgraph
+import tifffile
+import numpy as np
+import time
+from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
+from threading import Thread
 
 class Colors(object):
     """ Defines colors for easy access in all widgets. """
@@ -187,10 +191,11 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
     def increase_values(self):
         if self.laser:
-            self.painter.brush().setColor(color = QtGui.QColor(255, 255, 255).setAlpha(self.laser))
+            color = QtGui.QColor(255, 255, 255)
+            color.setAlpha(self.laser)
+            self.painter.brush().setColor(color)
             self.painter.drawRect(self.rect)
             self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
-
 
     def define_painter(self, alpha=10):
         painter = QtGui.QPainter(self.map)
@@ -232,7 +237,6 @@ class PositionHistory(QtWidgets.QGraphicsView):
                        QtCore.Qt.AspectRatioMode.KeepAspectRatio)
 
 
-
 class LiveView(QtWidgets.QGraphicsView):
     """ Mirror the last image received by Micro-Manager in a Python window """
 
@@ -247,6 +251,123 @@ class LiveView(QtWidgets.QGraphicsView):
         self.update()
 
 
+class AlignmentWidget(QtWidgets.QWidget):
+    """ Takes the microscope image and displays the four extremes and the center. Adds points to
+    peaks and gives other useful information for the alignment process"""
+
+    def __init__(self, parent = None):
+        width = height = 256
+        super(AlignmentWidget, self).__init__(parent=parent)
+
+        self.pixmap = QtGui.QPixmap(width,height)
+        grid = QtWidgets.QGridLayout(self)
+        self.view_top = AlignmentView()
+        self.view_bottom = AlignmentView()
+        self.view_center = AlignmentView()
+        self.mean_running = RunningMean()
+        grid.addWidget(self.view_top, 0, 0)
+        grid.addWidget(self.view_center, 1, 0)
+        grid.addWidget(self.mean_running, 1, 1)
+        grid.addWidget(self.view_bottom, 2, 0)
+
+    def add_image(self, image):
+        self.view_top.set_qimage(image)
+        self.view_bottom.set_qimage(image)
+        self.mean_running.add_image(image)
+
+
+class AlignmentView(GraphicsLayoutWidget):
+    """ Extend live view with functionality for alignment """
+
+    def __init__(self, parent=None, ):
+        self.width = self.height = 128
+        super(AlignmentView, self).__init__(parent=parent)
+        self.setSceneRect(0, 0, self.width, self.height)
+        self.viewBox = self.addViewBox()
+        self.viewBox.setAspectLocked()
+        self.viewBox.invertY()
+        self.pg_image = ImageItem()
+        self.pg_image.setOpts(axisOrder='row-major')
+        self.viewBox.addItem(self.pg_image)
+        self.raw_data = tifffile.imread('assets/test_peaks.tif')
+        self.set_qimage(self.raw_data)
+        self.pointer_radius = 1
+        self.pointers = []
+        self.peaks = []
+        self.get_peaks()
+        self.fit_peaks()
+        self.set_pointers()
+
+    def set_qimage(self, image_data):
+        self.pg_image.setImage(image_data)
+        self.update()
+
+    def get_peaks(self):
+        data = np.copy(self.raw_data)
+        max_value = 1000000
+        self.pointers = []
+        while max_value > np.mean(self.raw_data)*2:
+            max_value = np.max(data)
+            max_pixel = np.where(data == max_value)
+            max_pixel = [int(pixel[0]) for pixel in max_pixel]
+            if np.min(max_pixel) > 5 and max_pixel[0] < self.width-5 and max_pixel[1] < self.height-5:
+                data[max_pixel[0]-5:max_pixel[0]+6, max_pixel[1]-5:max_pixel[1]+6] = np.zeros((11,11))
+                self.peaks.append(max_pixel)
+                self.add_pointer()
+            else:
+                data[max_pixel[0], max_pixel[1]] = np.mean(data)
+
+    def fit_peaks(self):
+        data = np.copy(self.raw_data)
+        for index, peak in enumerate(self.peaks):
+            peak_data = data[peak[0]-5:peak[0]+6, peak[1]-5:peak[1]+6]
+            x, y = self.centroidnp(peak_data)
+            x_image = peak[0] + x - 4.5
+            y_image = peak[1] + y - 4.5
+            self.peaks[index] = [x_image, y_image]
+
+    def set_pointers(self):
+        for index, peak in enumerate(self.peaks):
+            pointer = self.pointers[index]
+            radius = self.pointer_radius
+            pointer.setRect(peak[1]-radius,
+                            peak[0]-radius, radius*2, radius*2)
+
+    def add_pointer(self):
+        radius = self.pointer_radius
+        pointer = QtWidgets.QGraphicsEllipseItem(0-radius, 0-radius, radius*2, radius*2)
+        pointer.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
+        pointer.setPen(QtGui.QPen(QtGui.QColorConstants.Transparent))
+        self.viewBox.addItem(pointer)
+        self.pointers.append(pointer)
+
+    def centroidnp(self, data):
+        h,w = data.shape
+        x = np.arange(w)
+        y = np.arange(h)
+        vx = data.sum(axis=0)
+        vx = vx/vx.sum()
+        vy = data.sum(axis=1)
+        vy = vy/vy.sum()
+        return np.dot(vx,x),np.dot(vy,y)
+
+
+class RunningMean(PlotWidget):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mean = PlotCurveItem([], pen=QtGui.QPen(QtGui.QColor('#505050')))
+        self.addItem(self.mean)
+        self.means = []
+
+    def add_image(self, image):
+        self.add_value(image[0,0])
+
+    def add_value(self, new_value):
+        if len(self.means) >= 100:
+            self.means.pop(0)
+        self.means.append(new_value)
+        self.mean.setData(self.means)
+
 
 
 class MiniApp(QtWidgets.QWidget):
@@ -257,10 +378,20 @@ class MiniApp(QtWidgets.QWidget):
         self.position_history = PositionHistory()
         self.layout().addWidget(self.position_history)
         self.layout().addWidget(FocusSlider())
-        self.layout().addWidget(LiveView())
+        # self.layout().addWidget(LiveView())
+        self.al_widget = AlignmentWidget()
+        self.layout().addWidget(self.al_widget)
         self.setStyleSheet("background-color:black;")
 
+class TestThread(Thread):
+    def __init__(self, app):
+        super(TestThread, self).__init__(target=self.do_work, daemon=True)
+        self.app = app
 
+    def do_work(self):
+        for t in range(30):
+            self.app.al_widget.mean_running.add_value(t%10)
+            time.sleep(0.2)
 
 
 if __name__ == '__main__':
@@ -268,4 +399,7 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     miniapp = MiniApp()
     miniapp.show()
+    thread = TestThread(miniapp)
+    thread.start()
+
     sys.exit(app.exec_())
