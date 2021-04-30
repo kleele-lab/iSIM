@@ -1,6 +1,6 @@
-from MicroManagerControl import MicroManagerControl
+import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
-from GUIWidgets import PositionHistory, FocusSlider
+from GUIWidgets import LiveView, PositionHistory, FocusSlider
 from EventThread import EventThread
 from PyQt5 import QtWidgets
 import sys
@@ -14,20 +14,25 @@ class MiniApp(QtWidgets.QWidget):
         super(MiniApp, self).__init__(parent=parent)
         self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
+        self.live_view = LiveView()
         self.event_thread = EventThread()
-        self.mm_interface = MicroManagerControl()
+        self.mm_interface = MicroManagerControl.MicroManagerControl()
 
         self.event_thread.start()
         self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
         self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
+        self.event_thread.new_image_event.connect(self.set_image)
+        self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
+        self.event_thread.settings_event.connect(self.handle_settings)
+        self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
         self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
         self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
 
-
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self.position_history)
         self.layout().addWidget(self.focus_slider)
+        self.layout().addWidget(self.live_view)
         self.setStyleSheet("background-color:black;")
 
     @pyqtSlot(float)
@@ -36,7 +41,6 @@ class MiniApp(QtWidgets.QWidget):
 
     @pyqtSlot(object)
     def set_xy_pos(self, pos):
-        print('RECEIVED XY SIGNAL')
         self.position_history.blockSignals(True)
         self.position_history.stage_pos[0] = pos[0]
         self.position_history.stage_pos[1] = pos[1]
@@ -47,25 +51,41 @@ class MiniApp(QtWidgets.QWidget):
     def set_xy_position_python(self, pos):
         self.event_thread.blockSignals(True)
         self.mm_interface.set_xy_position(pos)
-        time.sleep(0.1)
-        #Without the wait if it changes to fast it breaks the pycromanager socket
+        time.sleep(0.01)
         self.event_thread.blockSignals(False)
 
     @pyqtSlot(float)
     def set_z_position_python(self, pos):
         self.event_thread.blockSignals(True)
         self.mm_interface.set_z_position(pos)
-        time.sleep(0.07)
-        #Without the wait if it changes to fast it breaks the pycromanager socket
+        time.sleep(0.01)
         self.event_thread.blockSignals(False)
+
+    @pyqtSlot()
+    def set_bit_depth(self):
+        self.mm_interface.set_bit_depth()
+
+    @pyqtSlot(object)
+    def set_image(self, image):
+        self.live_view.set_qimage(self.mm_interface.convert_image(image))
+
+    @pyqtSlot(str, str, str)
+    def handle_settings(self, device, deviceProperty, value):
+        print(deviceProperty)
+        if device == "Dummy_488_Power" and deviceProperty == 'Power (% of max)':
+            self.position_history.laser = float(value)
+            print(self.position_history.laser)
+
+    @pyqtSlot(object)
+    def handle_mda_settings(self, settings):
+        print(settings.root())
 
     def closeEvent(self, event):
         self.event_thread.stop()
+        self.position_history.painter.end()
         event.accept()
 
-
-if __name__ == '__main__':
-    import time
+def main():
     app = QtWidgets.QApplication(sys.argv)
     # widget = FocusSlider()
     # widget = PositionHistory()
@@ -75,3 +95,7 @@ if __name__ == '__main__':
     miniapp = MiniApp()
     miniapp.show()
     sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    main()

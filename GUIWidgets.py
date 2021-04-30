@@ -1,6 +1,6 @@
 import sys
 from PyQt5 import QtGui, QtCore, QtWidgets, QtTest
-
+import pyqtgraph
 
 class Colors(object):
     """ Defines colors for easy access in all widgets. """
@@ -88,7 +88,6 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
 
         # Initialize the position of the stage and the parameters
         self.stage_pos = [0, 0]
@@ -188,13 +187,15 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
     def increase_values(self):
         if self.laser:
+            self.painter.brush().setColor(color = QtGui.QColor(255, 255, 255).setAlpha(self.laser))
             self.painter.drawRect(self.rect)
             self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
 
-    def define_painter(self):
+
+    def define_painter(self, alpha=10):
         painter = QtGui.QPainter(self.map)
         color = QtGui.QColor(255, 255, 255)
-        color.setAlpha(10)
+        color.setAlpha(alpha)
         brush = QtGui.QBrush(color)
         painter.setBrush(brush)
         painter.setPen(QtGui.QPen(QtGui.QColorConstants.Transparent))
@@ -231,14 +232,35 @@ class PositionHistory(QtWidgets.QGraphicsView):
                        QtCore.Qt.AspectRatioMode.KeepAspectRatio)
 
 
+
+class LiveView(QtWidgets.QGraphicsView):
+    """ Mirror the last image received by Micro-Manager in a Python window """
+
+    def __init__(self, parent=None):
+        super(LiveView, self).__init__(QtWidgets.QGraphicsScene(), parent=parent)
+        self.pixmap = QtGui.QPixmap(512, 512)
+        self.setSceneRect(0, 0, 512, 512)
+        self.image = self.scene().addPixmap(self.pixmap)
+
+    def set_qimage(self, image : QtGui.QImage):
+        self.image.setPixmap(QtGui.QPixmap.fromImage(image))
+        self.update()
+
+
+
+
 class MiniApp(QtWidgets.QWidget):
     """ Makes a mini App that shows off the capabilities of the Widgets implemented here """
     def __init__(self, parent = None):
         super(MiniApp, self).__init__(parent=parent)
         self.setLayout(QtWidgets.QHBoxLayout())
-        self.layout().addWidget(PositionHistory())
+        self.position_history = PositionHistory()
+        self.layout().addWidget(self.position_history)
         self.layout().addWidget(FocusSlider())
+        self.layout().addWidget(LiveView())
         self.setStyleSheet("background-color:black;")
+
+
 
 
 if __name__ == '__main__':
