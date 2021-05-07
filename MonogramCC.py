@@ -1,14 +1,21 @@
 
 import pygame
 import threading
+from PyQt5.QtCore import  pyqtSlot, pyqtSignal, QObject, QCoreApplication, QTimer
+import time
 
-pygame.init()
+CUTOFF_SPEEDUP = 80 # This is 1/ms for last value change
+# CUTOFF_SPEEDDOWN = 5
+CUTOFF_SPEED = 200
 
 
+class MonogramCC(QObject):
 
-class MonogramCC():
+    monogram_stage_position_event = pyqtSignal(float)
 
     def __init__(self):
+        super().__init__() 
+        pygame.init()
         self.initController()
         status = self.check_controller()
         if not status:
@@ -16,14 +23,17 @@ class MonogramCC():
         self.ZPosition = self.device.get_axis(0)
         self.oldValue  = self.device.get_axis(0)
         self.offset = self.oldValue
+        
+        self.last_time = time.perf_counter()
         self.turn = 0
+
         self.thread = threading.Thread(target=self.startListen, args=())
         self.thread.daemon = True                            # Daemonize thread
         self.thread.start()
 
     def startListen(self):
         done=False
-
+        print('started')
         while done==False:
             event = pygame.event.wait()
             if event.type == 1536: # AxisMotion
@@ -47,8 +57,14 @@ class MonogramCC():
         elif self.oldValue < -0.5 and newValue > 0.5:
             self.turn = self.turn - 2
         self.ZPosition = newValue + self.turn - self.offset
+        relative_move = self.get_relative_move(newValue)
+        relative_move_scaled = self.scale_relative_move(relative_move)
+
         self.oldValue = newValue
-        print(self.ZPosition)
+        
+        self.monogram_stage_position_event.emit(relative_move_scaled)
+        # print(relative_move_scaled)
+        # print(self.ZPosition)
 
     def initController(self):
         joystick_count=pygame.joystick.get_count()
@@ -68,7 +84,38 @@ class MonogramCC():
             print('No controller connected')
             return False
 
+    def translate_to_zisim(self, pos: float) -> float:
+        pass
+
+    def get_relative_move(self, newValue: float) -> float:
+        relative_move = newValue - self.oldValue
+        if relative_move < -1 or (0.0001 > relative_move > 0):
+            relative_move = 0.0079
+        elif relative_move > 1 or (-0.0001 < relative_move < 0):
+            relative_move = -0.0079
+        return relative_move
+
+    def scale_relative_move(self, relative_move: float) -> float:
+        now = time.perf_counter()
+        speed = 1/(now - self.last_time)
+        speed = min([speed, CUTOFF_SPEED])
+        self.last_time = now
+        if speed > CUTOFF_SPEEDUP:
+            relative_move = (speed - CUTOFF_SPEEDUP +5)/5 * relative_move
+        # elif speed < CUTOFF_SPEEDDOWN:
+        #     relative_move = speed/CUTOFF_SPEEDDOWN * relative_move
+        print(relative_move)
+        return relative_move
 
 if __name__ == '__main__':
-    MonogramCC()
-    input('Wait until closed by Keyboard')
+    import sys
+    app = QCoreApplication(sys.argv)
+    obj = MonogramCC()
+
+    # Make this interruptable by Ctrl+C
+    timer = QTimer()
+    timer.timeout.connect(lambda: None)
+    timer.start(500)
+
+    sys.exit(app.exec_())
+# 

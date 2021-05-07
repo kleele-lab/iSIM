@@ -5,6 +5,8 @@ import numpy as np
 import time
 from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
 from threading import Thread
+from MonogramCC import MonogramCC
+
 
 class Colors(object):
     """ Defines colors for easy access in all widgets. """
@@ -24,6 +26,13 @@ class FocusSlider(QtWidgets.QSlider):
         self.arrows = self.getArrows()
         self.setMaximum(20200)
         self.valueChanged.connect(self.z_value_changed)
+
+        # Try to connect the Monogram Controller
+        self.monogram = None
+        
+    def connect_monogram(self, monogram):
+        self.monogram = monogram
+        self.monogram.monogram_stage_position_event.connect(self.monogram_event)
 
     def z_value_changed(self, pos):
         self.repaint()
@@ -49,6 +58,11 @@ class FocusSlider(QtWidgets.QSlider):
             event.accept
             self.focusPos = self.handlePos()
             self.update()
+
+    @QtCore.pyqtSlot(float)
+    def monogram_event(self, relative_move: float):
+        pos = self.value() + int(relative_move*150)
+        self.setValue(pos)
 
     def handlePos(self):
         style = self.style()
@@ -369,7 +383,6 @@ class RunningMean(PlotWidget):
         self.mean.setData(self.means)
 
 
-
 class MiniApp(QtWidgets.QWidget):
     """ Makes a mini App that shows off the capabilities of the Widgets implemented here """
     def __init__(self, parent = None):
@@ -377,11 +390,15 @@ class MiniApp(QtWidgets.QWidget):
         self.setLayout(QtWidgets.QHBoxLayout())
         self.position_history = PositionHistory()
         self.layout().addWidget(self.position_history)
-        self.layout().addWidget(FocusSlider())
+        self.focus_slider = FocusSlider()
+        self.layout().addWidget(self.focus_slider)
         # self.layout().addWidget(LiveView())
         self.al_widget = AlignmentWidget()
         self.layout().addWidget(self.al_widget)
         self.setStyleSheet("background-color:black;")
+        self.monogram = MonogramCC()
+        self.focus_slider.connect_monogram(self.monogram)
+
 
 class TestThread(Thread):
     def __init__(self, app):

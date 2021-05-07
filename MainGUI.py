@@ -2,6 +2,7 @@ import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
 from GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget
 from EventThread import EventThread
+from MonogramCC import MonogramCC
 from PyQt5 import QtWidgets
 import sys
 import time
@@ -16,19 +17,22 @@ class MiniApp(QtWidgets.QWidget):
         self.focus_slider = FocusSlider()
         # self.live_view = LiveView()
         self.alignment_widget = AlignmentWidget()
-        self.event_thread = EventThread()
-        self.mm_interface = MicroManagerControl.MicroManagerControl()
+        # self.event_thread = EventThread()
+        # self.mm_interface = MicroManagerControl.MicroManagerControl()
 
-        self.event_thread.start()
-        self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
-        self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
-        self.event_thread.new_image_event.connect(self.set_image)
-        self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
-        self.event_thread.settings_event.connect(self.handle_settings)
-        self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
+
+        # self.event_thread.start()
+        # self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
+        # self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
+        # self.event_thread.new_image_event.connect(self.set_image)
+        # self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
+        # self.event_thread.settings_event.connect(self.handle_settings)
+        # self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
         self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
         self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
+        self.monogram = MonogramCC()
+        self.focus_slider.connect_monogram(self.monogram)
 
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self.position_history)
@@ -90,11 +94,6 @@ class MiniApp(QtWidgets.QWidget):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    # widget = FocusSlider()
-    # widget = PositionHistory()
-    # widget.stage_moved([70,100])
-    # widget.stage_moved([-300,-100])
-    # widget.show()
     miniapp = MiniApp()
     miniapp.show()
     sys.exit(app.exec_())
