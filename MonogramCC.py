@@ -3,21 +3,24 @@ import pygame
 import threading
 
 pygame.init()
- 
+
 
 
 class MonogramCC():
 
     def __init__(self):
         self.initController()
+        status = self.check_controller()
+        if not status:
+            raise IOError
         self.ZPosition = self.device.get_axis(0)
         self.oldValue  = self.device.get_axis(0)
         self.offset = self.oldValue
         self.turn = 0
         self.thread = threading.Thread(target=self.startListen, args=())
         self.thread.daemon = True                            # Daemonize thread
-        self.thread.start()     
-  
+        self.thread.start()
+
     def startListen(self):
         done=False
 
@@ -47,7 +50,7 @@ class MonogramCC():
         self.oldValue = newValue
         print(self.ZPosition)
 
-    def initController(self):   
+    def initController(self):
         joystick_count=pygame.joystick.get_count()
         if joystick_count == 0:
             # No joysticks!
@@ -56,6 +59,14 @@ class MonogramCC():
             # Use joystick #0 and initialize it
             self.device = pygame.joystick.Joystick(0)
             self.device.init()
+
+    def check_controller(self):
+        try:
+            print(self.device)
+            return True
+        except AttributeError:
+            print('No controller connected')
+            return False
 
 
 if __name__ == '__main__':
