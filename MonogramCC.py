@@ -3,6 +3,7 @@ import pygame
 import threading
 from PyQt5.QtCore import  pyqtSlot, pyqtSignal, QObject, QCoreApplication, QTimer
 import time
+import sys
 
 CUTOFF_SPEEDUP = 80 # This is 1/ms for last value change
 # CUTOFF_SPEEDDOWN = 5
@@ -14,19 +15,14 @@ class MonogramCC(QObject):
     monogram_stage_position_event = pyqtSignal(float)
 
     def __init__(self):
-        super().__init__() 
+        super().__init__()
         pygame.init()
         self.initController()
-        status = self.check_controller()
-        if not status:
-            raise IOError
         self.ZPosition = self.device.get_axis(0)
         self.oldValue  = self.device.get_axis(0)
         self.offset = self.oldValue
-        
         self.last_time = time.perf_counter()
         self.turn = 0
-
         self.thread = threading.Thread(target=self.startListen, args=())
         self.thread.daemon = True                            # Daemonize thread
         self.thread.start()
@@ -61,7 +57,7 @@ class MonogramCC(QObject):
         relative_move_scaled = self.scale_relative_move(relative_move)
 
         self.oldValue = newValue
-        
+
         self.monogram_stage_position_event.emit(relative_move_scaled)
         # print(relative_move_scaled)
         # print(self.ZPosition)
@@ -70,22 +66,11 @@ class MonogramCC(QObject):
         joystick_count=pygame.joystick.get_count()
         if joystick_count == 0:
             # No joysticks!
-            print ("Error, I didn't find any joysticks.")
+            raise OSError('No joystick found')
         else:
             # Use joystick #0 and initialize it
             self.device = pygame.joystick.Joystick(0)
             self.device.init()
-
-    def check_controller(self):
-        try:
-            print(self.device)
-            return True
-        except AttributeError:
-            print('No controller connected')
-            return False
-
-    def translate_to_zisim(self, pos: float) -> float:
-        pass
 
     def get_relative_move(self, newValue: float) -> float:
         relative_move = newValue - self.oldValue
@@ -108,9 +93,12 @@ class MonogramCC(QObject):
         return relative_move
 
 if __name__ == '__main__':
-    import sys
     app = QCoreApplication(sys.argv)
-    obj = MonogramCC()
+    try:
+        obj = MonogramCC()
+    except IOError as e:
+        print(e)
+        sys.exit()
 
     # Make this interruptable by Ctrl+C
     timer = QTimer()
@@ -118,4 +106,4 @@ if __name__ == '__main__':
     timer.start(500)
 
     sys.exit(app.exec_())
-# 
+#

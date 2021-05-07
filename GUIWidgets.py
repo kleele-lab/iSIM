@@ -29,7 +29,7 @@ class FocusSlider(QtWidgets.QSlider):
 
         # Try to connect the Monogram Controller
         self.monogram = None
-        
+
     def connect_monogram(self, monogram):
         self.monogram = monogram
         self.monogram.monogram_stage_position_event.connect(self.monogram_event)
@@ -396,11 +396,15 @@ class MiniApp(QtWidgets.QWidget):
         self.al_widget = AlignmentWidget()
         self.layout().addWidget(self.al_widget)
         self.setStyleSheet("background-color:black;")
-        self.monogram = MonogramCC()
-        self.focus_slider.connect_monogram(self.monogram)
+        try:
+            self.monogram = MonogramCC()
+            self.focus_slider.connect_monogram(self.monogram)
+        except OSError as e:
+            print(e)
 
 
 class TestThread(Thread):
+    """ Draws into the pyqtgraph window to show a potential value being added there """
     def __init__(self, app):
         super(TestThread, self).__init__(target=self.do_work, daemon=True)
         self.app = app

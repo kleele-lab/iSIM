@@ -8,31 +8,39 @@ import sys
 import time
 import numpy as np
 
-class MiniApp(QtWidgets.QWidget):
+class MainGUI(QtWidgets.QWidget):
     """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
 
     def __init__(self, parent = None):
-        super(MiniApp, self).__init__(parent=parent)
+        super(MainGUI, self).__init__(parent=parent)
         self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
         # self.live_view = LiveView()
         self.alignment_widget = AlignmentWidget()
-        # self.event_thread = EventThread()
-        # self.mm_interface = MicroManagerControl.MicroManagerControl()
+        try: # this makes sense only if Micro-Manager is running
+            self.event_thread = EventThread()
+            self.event_thread.start()
+            self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
+            self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
+            self.event_thread.new_image_event.connect(self.set_image)
+            self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
+            self.event_thread.settings_event.connect(self.handle_settings)
+            self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
+
+            self.mm_interface = MicroManagerControl.MicroManagerControl()
+            self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
+            self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
+        except TimeoutError as error:
+            print(error)
+            print('No, will work as Test Widgets')
+
+        try: # This makes sense only if the controller is connected
+            self.monogram = MonogramCC()
+            self.focus_slider.connect_monogram(self.monogram)
+        except OSError as error:
+            print(error)
 
 
-        # self.event_thread.start()
-        # self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
-        # self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
-        # self.event_thread.new_image_event.connect(self.set_image)
-        # self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
-        # self.event_thread.settings_event.connect(self.handle_settings)
-        # self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
-
-        self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
-        self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
-        self.monogram = MonogramCC()
-        self.focus_slider.connect_monogram(self.monogram)
 
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self.position_history)
@@ -94,7 +102,7 @@ class MiniApp(QtWidgets.QWidget):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    miniapp = MiniApp()
+    miniapp = MainGUI()
     miniapp.show()
     sys.exit(app.exec_())
 

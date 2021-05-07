@@ -8,6 +8,8 @@ from PyQt5.QtCore import QObject, pyqtSignal
 import time
 import numpy
 
+SOCKET = '5556'
+
 def main():
     thread = EventThread()
     thread.start(daemon=True)
@@ -55,9 +57,7 @@ class EventThread(QObject):
 
 
     def start(self, daemon = True):
-
-        self.thread = threading.Thread(target=self.main_thread,
-                                       args=(self.thread_stop, ),
+        self.thread = threading.Thread(target=self.main_thread, args=(self.thread_stop, ),
                                        daemon=daemon)
         self.thread.start()
 
@@ -85,28 +85,28 @@ class EventThread(QObject):
 
                 eventString = evt.to_string()
                 print(eventString)
-                if 'org.micromanager.events.ExposureChangedEvent' in eventString:
+                if 'ExposureChangedEvent' in eventString:
                     print(evt.get_new_exposure_time())
-                elif 'org.micromanager.events.internal.DefaultAcquisitionStartedEvent' in eventString:
+                elif 'internal.DefaultAcquisitionStartedEvent' in eventString:
                     print(evt.get_datastore().to_string())
                     print(evt.get_settings().interval_ms())
                     self.acquisition_started_event.emit()
-                elif 'org.micromanager.events.internal.DefaultAcquisitionEndedEvent' in eventString:
+                elif 'internal.DefaultAcquisitionEndedEvent' in eventString:
                     print(evt.get_store().to_string())
-                elif 'org.micromanager.events.StagePositionChangedEvent' in eventString:
+                elif 'StagePositionChangedEvent' in eventString:
                     print(evt.get_pos())
                     self.stage_position_changed_event.emit(evt.get_pos()*100)
-                elif 'org.micromanager.events.XYStagePositionChangedEvent' in eventString:
+                elif 'XYStagePositionChangedEvent' in eventString:
                     print(evt.get_x_pos())
                     print(evt.get_y_pos())
                     self.xy_stage_position_changed_event.emit((evt.get_x_pos(), evt.get_y_pos()))
-                elif 'org.micromanager.data.internal.DefaultNewImageEvent' in eventString:
+                elif 'internal.DefaultNewImageEvent' in eventString:
                     image = evt.get_image()
                     raw_image = image.get_raw_pixels().reshape([image.get_width(), image.get_height()])
                     self.new_image_event.emit(raw_image)
-                elif 'org.micromanager.plugins.pythoneventserver.CustomSettingsEvent' in eventString:
+                elif 'pythoneventserver.CustomSettingsEvent' in eventString:
                     self.settings_event.emit(evt.get_device(), evt.get_property(), evt.get_value())
-                elif  'org.micromanager.plugins.pythoneventserver.CustomMDAEvent' in eventString:
+                elif  'pythoneventserver.CustomMDAEvent' in eventString:
                     self.mda_settings_event.emit(evt.get_settings())
                 else:
                     print('This event is not known yet')
