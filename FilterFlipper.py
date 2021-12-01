@@ -11,6 +11,7 @@ import Thorlabs.MotionControl.GenericMotorCLI as GenericMotorCLI
 import Thorlabs.MotionControl.FilterFlipperCLI as FilterFlipperCLI
 from System import UInt32, Int32
 
+
 class FilterFlipper(object):
 
     def __init__(self):
@@ -22,13 +23,13 @@ class FilterFlipper(object):
         self._timeoutMove = 10000
         self._tpolling = 250
         self._info = None
-        
+
     def connect(self, flipperNo):
         self.serialNo = self.availableDevices[flipperNo]
         self.device = FilterFlipperCLI.FilterFlipper.CreateFilterFlipper(self.serialNo)
         self.device.ClearDeviceExceptions()
         self.device.Connect(self.serialNo)
-        if not self.device.IsSettingsInitialized(): 
+        if not self.device.IsSettingsInitialized():
             self.device.WaitForSettingsInitialized(self._timeout)
         self.device.StartPolling(self._tpolling)
         self.device.EnableDevice()
@@ -36,9 +37,9 @@ class FilterFlipper(object):
         self.setUpDown()
 
     def setPos(self, position):
-        self.device.SetPosition(UInt32(position),Int32(self._timeoutMove))
+        self.device.SetPosition(UInt32(position), Int32(self._timeoutMove))
         self.device.Wait(self._timeoutMove)
-    
+
     def moveUp(self):
         self.setPos(self._upPos)
 
@@ -46,8 +47,8 @@ class FilterFlipper(object):
         self.setPos(self._downPos)
 
     def home(self):
-        workDone = self.device.InitializeWaitHandler()     
-        self.device.Home(workDone)                
+        workDone = self.device.InitializeWaitHandler()
+        self.device.Home(workDone)
         self.device.Wait(self._timeoutMove)
 
     def disconnect(self):

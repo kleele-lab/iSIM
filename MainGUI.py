@@ -2,22 +2,24 @@ import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
 from GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget
 from EventThread import EventThread
+from EDAPlugin import EDAImageAnalyser, KerasAnalyser
 from MonogramCC import MonogramCC
 from PyQt5 import QtWidgets
 import sys
 import time
 import numpy as np
 
+
 class MainGUI(QtWidgets.QWidget):
     """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(MainGUI, self).__init__(parent=parent)
         self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
-        # self.live_view = LiveView()
-        self.alignment_widget = AlignmentWidget()
-        try: # this makes sense only if Micro-Manager is running
+        self.live_view = LiveView()
+        # self.alignment_widget = AlignmentWidget()
+        try:  # this makes sense only if Micro-Manager is running
             self.event_thread = EventThread()
             self.event_thread.start()
             self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
@@ -27,6 +29,7 @@ class MainGUI(QtWidgets.QWidget):
             self.event_thread.settings_event.connect(self.handle_settings)
             self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
+            self.image_analyser = KerasAnalyser(self.event_thread)
             self.mm_interface = MicroManagerControl.MicroManagerControl()
             self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
             self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
@@ -34,19 +37,18 @@ class MainGUI(QtWidgets.QWidget):
             print(error)
             print('No, will work as Test Widgets')
 
-        try: # This makes sense only if the controller is connected
+        try:
+            # This makes sense only if the controller is connected
             self.monogram = MonogramCC()
             self.focus_slider.connect_monogram(self.monogram)
         except OSError as error:
             print(error)
 
-
-
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self.position_history)
         self.layout().addWidget(self.focus_slider)
-        # self.layout().addWidget(self.live_view)
-        self.layout().addWidget(self.alignment_widget)
+        self.layout().addWidget(self.live_view)
+        # self.layout().addWidget(self.alignment_widget)
         self.setStyleSheet("background-color:black;")
 
     @pyqtSlot(float)
@@ -80,9 +82,11 @@ class MainGUI(QtWidgets.QWidget):
         self.mm_interface.set_bit_depth()
 
     @pyqtSlot(object)
-    def set_image(self, image):
-        # self.live_view.set_qimage(self.mm_interface.convert_image(image))
-        self.alignment_widget.add_image(image)
+    def set_image(self, evt):
+        image = evt.get_image()
+        image = image.get_raw_pixels().reshape([image.get_width(), image.get_height()])
+        self.live_view.set_qimage(self.mm_interface.convert_image(image))
+        # self.alignment_widget.add_image(image)
 
     @pyqtSlot(str, str, str)
     def handle_settings(self, device, deviceProperty, value):
@@ -99,6 +103,7 @@ class MainGUI(QtWidgets.QWidget):
         self.event_thread.stop()
         self.position_history.painter.end()
         event.accept()
+
 
 def main():
     app = QtWidgets.QApplication(sys.argv)

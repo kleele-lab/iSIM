@@ -19,7 +19,7 @@ class MonogramCC(QObject):
         pygame.init()
         self.initController()
         self.ZPosition = self.device.get_axis(0)
-        self.oldValue  = self.device.get_axis(0)
+        self.oldValue = self.device.get_axis(0)
         self.offset = self.oldValue
         self.last_time = time.perf_counter()
         self.turn = 0
@@ -28,13 +28,13 @@ class MonogramCC(QObject):
         self.thread.start()
 
     def startListen(self):
-        done=False
+        done = False
         print('started')
-        while done==False:
+        while done == False:
             event = pygame.event.wait()
-            if event.type == 1536: # AxisMotion
+            if event.type == 1536:  # AxisMotion
                 self.updatePos(event.value)
-            if event.type == 1540: # ButtonUp
+            if event.type == 1540:  # ButtonUp
                 if event.button == 0:
                     pygame.quit()
                     done = True
@@ -63,7 +63,7 @@ class MonogramCC(QObject):
         # print(self.ZPosition)
 
     def initController(self):
-        joystick_count=pygame.joystick.get_count()
+        joystick_count = pygame.joystick.get_count()
         if joystick_count == 0:
             # No joysticks!
             raise OSError('No joystick found')
@@ -92,6 +92,7 @@ class MonogramCC(QObject):
         print(relative_move)
         return relative_move
 
+
 if __name__ == '__main__':
     app = QCoreApplication(sys.argv)
     try:
@@ -106,4 +107,3 @@ if __name__ == '__main__':
     timer.start(500)
 
     sys.exit(app.exec_())
-#

@@ -1,4 +1,5 @@
 import sys
+from typing import Tuple
 from PyQt5 import QtGui, QtCore, QtWidgets, QtTest
 import tifffile
 import numpy as np
@@ -11,7 +12,7 @@ from MonogramCC import MonogramCC
 class Colors(object):
     """ Defines colors for easy access in all widgets. """
     def __init__(self):
-        self.blue = QtGui.QColor(25, 180, 210, alpha = 150)
+        self.blue = QtGui.QColor(25, 180, 210, alpha=150)
 
 
 class FocusSlider(QtWidgets.QSlider):
@@ -130,7 +131,6 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.arrow.setVisible(0)
         self.rect = QtCore.QRectF(pos[0], pos[1],
                                  self.fov_size[0], self.fov_size[1])
-
 
         self.laser = True
 
@@ -260,7 +260,10 @@ class LiveView(QtWidgets.QGraphicsView):
         self.setSceneRect(0, 0, 512, 512)
         self.image = self.scene().addPixmap(self.pixmap)
 
-    def set_qimage(self, image : QtGui.QImage):
+    def reset_scene_rect(self, shape: Tuple):
+        self.setSceneRect(0, 0, *shape)
+
+    def set_qimage(self, image: QtGui.QImage):
         self.image.setPixmap(QtGui.QPixmap.fromImage(image))
         self.update()
 
@@ -269,7 +272,7 @@ class AlignmentWidget(QtWidgets.QWidget):
     """ Takes the microscope image and displays the four extremes and the center. Adds points to
     peaks and gives other useful information for the alignment process"""
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         width = height = 256
         super(AlignmentWidget, self).__init__(parent=parent)
 
@@ -356,7 +359,7 @@ class AlignmentView(GraphicsLayoutWidget):
         self.pointers.append(pointer)
 
     def centroidnp(self, data):
-        h,w = data.shape
+        h, w = data.shape
         x = np.arange(w)
         y = np.arange(h)
         vx = data.sum(axis=0)
@@ -385,7 +388,7 @@ class RunningMean(PlotWidget):
 
 class MiniApp(QtWidgets.QWidget):
     """ Makes a mini App that shows off the capabilities of the Widgets implemented here """
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super(MiniApp, self).__init__(parent=parent)
         self.setLayout(QtWidgets.QHBoxLayout())
         self.position_history = PositionHistory()
@@ -411,7 +414,7 @@ class TestThread(Thread):
 
     def do_work(self):
         for t in range(30):
-            self.app.al_widget.mean_running.add_value(t%10)
+            self.app.al_widget.mean_running.add_value(t % 10)
             time.sleep(0.2)
 
 

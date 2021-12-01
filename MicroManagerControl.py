@@ -1,10 +1,11 @@
 from pycromanager import Bridge
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtGui import QImage
-import MainGUI
+
 import numpy
 import time
 from qimage2ndarray import gray2qimage
+
 
 class MicroManagerControl():
 
@@ -16,15 +17,13 @@ class MicroManagerControl():
         self.image_format = QImage.Format.Format_Grayscale16
         self.LUT = []
 
-
     @pyqtSlot(object)
     def set_xy_position(self, pos: tuple):
-        self.core.set_xy_position(pos[0],pos[1])
+        self.core.set_xy_position(pos[0], pos[1])
 
     @pyqtSlot(float)
     def set_z_position(self, pos: float):
         self.core.set_position(pos)
-
 
     def set_bit_depth(self):
         bit_depth = self.core.get_image_bit_depth
@@ -34,12 +33,13 @@ class MicroManagerControl():
             self.image_format = QImage.Format.Format_Grayscale16
 
     @pyqtSlot(object)
-    def convert_image(self, image: numpy.ndarray):
-        t1 = time.perf_counter()
-        qimage = gray2qimage(image, normalize=True)
-        print(time.perf_counter() - t1)
+    def convert_image(self, image: numpy.ndarray, normalize: bool = True):
+        # t1 = time.perf_counter()
+        qimage = gray2qimage(image, normalize=normalize)
+        # print(time.perf_counter() - t1)
         return qimage
 
 
 if __name__ == '__main__':
+    import MainGUI
     MainGUI.main()
