@@ -99,7 +99,11 @@ class MainGUI(QtWidgets.QWidget):
         print(settings.root())
 
     def closeEvent(self, event):
-        self.event_thread.stop()
+        try:
+            self.event_thread.stop()
+        except AttributeError:
+            # Event Thread was not added in the first place
+            pass
         self.position_history.painter.end()
         event.accept()
 
