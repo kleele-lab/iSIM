@@ -2,7 +2,6 @@ import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
 from GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget
 from EventThread import EventThread
-from EDAPlugin import EDAImageAnalyser, KerasAnalyser
 from MonogramCC import MonogramCC
 from PyQt5 import QtWidgets
 import sys
@@ -29,7 +28,7 @@ class MainGUI(QtWidgets.QWidget):
             self.event_thread.settings_event.connect(self.handle_settings)
             self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
-            self.image_analyser = KerasAnalyser(self.event_thread)
+
             self.mm_interface = MicroManagerControl.MicroManagerControl()
             self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
             self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
