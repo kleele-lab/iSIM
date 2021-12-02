@@ -1,14 +1,12 @@
 from pycromanager import Bridge, core, Acquisition
-import pycromanager
 import threading
 import re
 import zmq
 import json
 from PyQt5.QtCore import QObject, pyqtSignal
 import time
-import numpy
 
-from data_structures import PyImage
+from .data_structures import PyImage
 
 SOCKET = '5556'
 
