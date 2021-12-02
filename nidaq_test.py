@@ -1,9 +1,7 @@
 import nidaqmx
 import nidaqmx.stream_writers
-import time
 import numpy as np
-import sys
-import matplotlib.pyplot as plt
+
 
 class NIDAQ_Test():
 
@@ -35,7 +33,7 @@ class NIDAQ_Test():
         self.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.task.out_stream, auto_start=False)
         self.stream.write_many_sample(np.zeros((self.task.number_of_channels, self.smplRate)))
         self.task.register_every_n_samples_transferred_from_buffer_event(2, self.makeData)
-    
+
     def makeData(self, task_handle, every_n_samples_event_type, number_of_samples, callback_data):
         galvoData = self.makeGalvo()
         cameraData = self.makeCamera()
@@ -51,7 +49,7 @@ class NIDAQ_Test():
     def closeTask(self):
         self.task.close()
 
-    def makeCamera(self):     
+    def makeCamera(self):
         cameraData = self.makePulse(5,0,0)
         # cameraData = np.tile(cameraData, self.NoFrames)
         return cameraData
@@ -95,4 +93,3 @@ daq = NIDAQ_Test()
 daq.startTask()
 input('Press Enter to exit')  # task runs for as long as ENTER is not pressed
 daq.closeTask()
-
