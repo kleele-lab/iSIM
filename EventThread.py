@@ -121,24 +121,3 @@ class EventThread(QObject):
 
 if __name__ == '__main__':
     main()
-
-
-# ASYNCIO
-# import asyncio
-# from zmq.asyncio import Context
-
-# ctx = Context
-
-# async def recv():
-#     s = ctx.socket(ctx, zmq.SUB)
-#     s.bind('tcp://localhost:5556')
-#     # s.setsockopt(zmq.SUBSCRIBE, "topic1")
-#     s.subscribe(b'')
-#     while True:
-#         msg = await s.recv_multipart()
-#         print('received', msg)
-#     s.close()
-
-# loop = asyncio.get_event_loop()
-# loop.run_until_complete(recv())
-# loop.close()
