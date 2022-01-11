@@ -89,11 +89,10 @@ class MonogramCC(QObject):
             relative_move = (speed - CUTOFF_SPEEDUP +5)/5 * relative_move
         # elif speed < CUTOFF_SPEEDDOWN:
         #     relative_move = speed/CUTOFF_SPEEDDOWN * relative_move
-        print(relative_move)
+        print(self.ZPosition)
         return relative_move
 
-
-if __name__ == '__main__':
+def main(control:bool = False):
     app = QCoreApplication(sys.argv)
     try:
         obj = MonogramCC()
@@ -101,9 +100,17 @@ if __name__ == '__main__':
         print(e)
         sys.exit()
 
+    if control:
+        import MicroManagerControl
+        micro_control = MicroManagerControl.MicroManagerControl()
+        obj.monogram_stage_position_event.connect(micro_control.track_z_change)
     # Make this interruptable by Ctrl+C
     timer = QTimer()
     timer.timeout.connect(lambda: None)
     timer.start(500)
 
     sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    main()

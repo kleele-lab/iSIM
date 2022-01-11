@@ -11,18 +11,24 @@ class NIDAQ_Test():
 
         self.power488 = 2
         self.SamplingRate = 500
-        self.SweepsPerFrame = 1
-        self.ExpTime = 100
-        self.NoFrames = int(2000/self.ExpTime)
+        self.SweepsPerFrame = 2
+
+        # If this is the same as exposure time, then the camera does miss one trigger, so should be
+        # exposure time + 1
+        self.CycleTime = 200
+        self.NoFrames = round(2000/self.CycleTime)
         self.noPoints = self.SamplingRate*self.SweepsPerFrame
 
-        self.DutyCycle=10/(self.SamplingRate*self.SweepsPerFrame)
-        self.FrameRate=1/(self.ExpTime*self.SweepsPerFrame/1000)
+        # Duty cycle of pulses
+        self.DutyCycle=10/self.noPoints
+        self.FrameRate=1/(self.CycleTime*self.SweepsPerFrame/1000)
         # DAQ specific parameters
-        self.smplRate = int(np.round(round(self.SamplingRate*self.FrameRate*self.SweepsPerFrame)))
+        self.smplRate = round(self.SamplingRate*self.FrameRate*self.SweepsPerFrame*self.SweepsPerFrame)
+
 
         self.task = nidaqmx.Task()
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao0') # galvo channel
+        # self.task.ao_channels.add_ao_voltage_chan('Dev1/ao1') # z stage
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao2') # camera channel
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao3') # aotf blanking channel
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao4') # aotf 488 channel
@@ -42,6 +48,13 @@ class NIDAQ_Test():
         daqData = np.tile(daqData, self.NoFrames)
         self.stream.write_many_sample(daqData)
         return 0
+
+    def makedummyData(self):
+        galvoData = self.makeGalvo()
+        cameraData = self.makeCamera()
+        laserData = self.makeAOTF()
+        daqData = np.vstack((galvoData, cameraData, laserData))
+        return np.tile(daqData, self.NoFrames)
 
     def startTask(self):
         self.task.start()
@@ -84,12 +97,17 @@ class NIDAQ_Test():
         return aotf488
 
     def makePulse(self, start, end, offset):
-        up = np.ones(int(self.DutyCycle*self.noPoints))*start
-        down = np.ones(self.noPoints-int(self.DutyCycle*self.noPoints))*end
+        up = np.ones(round(self.DutyCycle*self.noPoints))*start
+        down = np.ones(self.noPoints-round(self.DutyCycle*self.noPoints))*end
         pulse = np.concatenate((up,down)) + offset
         return pulse
 
-daq = NIDAQ_Test()
-daq.startTask()
-input('Press Enter to exit')  # task runs for as long as ENTER is not pressed
-daq.closeTask()
+
+def main():
+    daq = NIDAQ_Test()
+    daq.startTask()
+    input('Press Enter to exit')  # task runs for as long as ENTER is not pressed
+    daq.closeTask()
+
+if __name__ == "__main__":
+    main()

@@ -6,7 +6,7 @@ import json
 from PyQt5.QtCore import QObject, pyqtSignal
 import time
 
-from .data_structures import PyImage
+from data_structures import PyImage
 
 SOCKET = '5556'
 
@@ -85,7 +85,7 @@ class EventThread(QObject):
                 # , serialized_object=message, bridge=self.bridge)
 
                 eventString = evt.to_string()
-                print(eventString)
+                # print(eventString)
                 if 'ExposureChangedEvent' in eventString:
                     print(evt.get_new_exposure_time())
                 elif 'internal.DefaultAcquisitionStartedEvent' in eventString:
@@ -93,7 +93,8 @@ class EventThread(QObject):
                 elif 'internal.DefaultAcquisitionEndedEvent' in eventString:
                     print('Acquisition Ended')
                 elif '.StagePositionChangedEvent' in eventString:
-                    print(evt.get_pos())
+                    self.stage_position_changed_event.emit(evt.get_pos()*100)
+                elif '.DefaultStagePositionChangedEvent' in eventString:
                     self.stage_position_changed_event.emit(evt.get_pos()*100)
                 elif 'XYStagePositionChangedEvent' in eventString:
                     print(evt.get_x_pos())

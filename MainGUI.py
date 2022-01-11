@@ -1,22 +1,24 @@
 import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal
-from GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget
+from GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean
 from EventThread import EventThread
 from MonogramCC import MonogramCC
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 import sys
 import time
 import numpy as np
 
+# Adjust for different screen sizes
+QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 class MainGUI(QtWidgets.QWidget):
     """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, monogram:bool = True):
         super(MainGUI, self).__init__(parent=parent)
         self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
-        self.live_view = LiveView()
+        # self.live_view = LiveView()
         # self.alignment_widget = AlignmentWidget()
         try:  # this makes sense only if Micro-Manager is running
             self.event_thread = EventThread()
@@ -38,15 +40,16 @@ class MainGUI(QtWidgets.QWidget):
 
         try:
             # This makes sense only if the controller is connected
-            self.monogram = MonogramCC()
-            self.focus_slider.connect_monogram(self.monogram)
+            if monogram:
+                self.monogram = MonogramCC()
+                self.focus_slider.connect_monogram(self.monogram)
         except OSError as error:
             print(error)
 
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self.position_history)
         self.layout().addWidget(self.focus_slider)
-        self.layout().addWidget(self.live_view)
+        # self.layout().addWidget(self.live_view)
         # self.layout().addWidget(self.alignment_widget)
         self.setStyleSheet("background-color:black;")
 
@@ -82,8 +85,8 @@ class MainGUI(QtWidgets.QWidget):
 
     @pyqtSlot(object)
     def set_image(self, evt):
-        image = evt.get_image()
-        image = image.get_raw_pixels().reshape([image.get_width(), image.get_height()])
+        image = evt.raw_image
+        # image = image.get_raw_pixels().reshape([image.shape[0], image.shape[1]])
         self.live_view.set_qimage(self.mm_interface.convert_image(image))
         # self.alignment_widget.add_image(image)
 
@@ -108,9 +111,32 @@ class MainGUI(QtWidgets.QWidget):
         event.accept()
 
 
+class AlignmentGUI(QtWidgets.QWidget):
+    """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
+
+    def __init__(self, parent=None, monogram:bool = True):
+        super(AlignmentGUI, self).__init__(parent=parent)
+        self.mean = RunningMean()
+        self.view = AlignmentWidget()
+        self.view.setFixedWidth(1800)
+        try:  # this makes sense only if Micro-Manager is running
+            self.event_thread = EventThread()
+            self.event_thread.start()
+            self.event_thread.new_image_event.connect(self.mean.add_image)
+            self.event_thread.new_image_event.connect(self.view.add_image)
+        except TimeoutError as error:
+            print(error)
+            print('No, will work as Test Widgets')
+
+        self.setLayout(QtWidgets.QHBoxLayout())
+        self.layout().addWidget(self.mean)
+        self.layout().addWidget(self.view)
+        self.setStyleSheet("background-color:black;")
+
+
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    miniapp = MainGUI()
+    miniapp = AlignmentGUI()
     miniapp.show()
     sys.exit(app.exec_())
 

@@ -1,13 +1,19 @@
 import sys
 from typing import Tuple
 from PyQt5 import QtGui, QtCore, QtWidgets, QtTest
+from pyqtgraph.functions import mkBrush, mkPen
+from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
+from qimage2ndarray import gray2qimage
 import tifffile
 import numpy as np
 import time
 from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
 from threading import Thread
 from MonogramCC import MonogramCC
+from scipy.ndimage import center_of_mass
 
+# Adjust for different screen sizes
+QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 class Colors(object):
     """ Defines colors for easy access in all widgets. """
@@ -273,100 +279,241 @@ class AlignmentWidget(QtWidgets.QWidget):
     peaks and gives other useful information for the alignment process"""
 
     def __init__(self, parent=None):
-        width = height = 256
+        width = height = 140
+        self.window_offset = 61
         super(AlignmentWidget, self).__init__(parent=parent)
 
         self.pixmap = QtGui.QPixmap(width,height)
         grid = QtWidgets.QGridLayout(self)
-        self.view_top = AlignmentView()
-        self.view_bottom = AlignmentView()
-        self.view_center = AlignmentView()
-        self.mean_running = RunningMean()
-        grid.addWidget(self.view_top, 0, 0)
-        grid.addWidget(self.view_center, 1, 0)
-        grid.addWidget(self.mean_running, 1, 1)
-        grid.addWidget(self.view_bottom, 2, 0)
+        top_bottom_offset = np.tan(0.063948864)*(1024-height/2) - self.window_offset
+        self.view_top = AlignmentView(line_offset= - top_bottom_offset,
+                                      expected_shape=(width,height))
+        self.view_center = AlignmentView(center = True, expected_shape=(width,height))
+        self.view_center.viewBox.disableAutoRange()
+        self.view_center.viewBox.setRange(xRange = (35,105), yRange=(35,105))
+        self.view_center.viewBox.setMouseMode(self.view_center.viewBox.RectMode)
+        self.view_bottom = AlignmentView(line_offset=top_bottom_offset,
+                                         expected_shape=(width,height))
+        grid.addWidget(self.view_top, 0, 1)
+        grid.addWidget(self.view_center, 0, 0, 2, 1)
+        grid.addWidget(self.view_bottom, 1, 1)
+        self.size = int(width/2)
 
     def add_image(self, image):
-        self.view_top.set_qimage(image)
-        self.view_bottom.set_qimage(image)
-        self.mean_running.add_image(image)
+        qimage = image.raw_image
+
+        self.view_top.set_qimage(qimage[0:self.size*2,
+                                        1024-self.size-self.window_offset:1024+self.size-self.window_offset])
+        self.view_center.set_qimage(qimage[1024-self.size:1024+self.size,
+                                           1024-self.size:1024+self.size])
+        self.view_bottom.set_qimage(qimage[2048-self.size*2:2048,
+                                           1024-self.size+self.window_offset:1024+self.size+self.window_offset])
 
 
 class AlignmentView(GraphicsLayoutWidget):
     """ Extend live view with functionality for alignment """
 
-    def __init__(self, parent=None, ):
-        self.width = self.height = 128
+    def __init__(self, parent=None, center:bool = False,
+                 line_offset:float = 0., expected_shape:Tuple = (160, 160)):
         super(AlignmentView, self).__init__(parent=parent)
-        self.setSceneRect(0, 0, self.width, self.height)
+        self.setSceneRect(0, 0, expected_shape[0], expected_shape[1])
         self.viewBox = self.addViewBox()
         self.viewBox.setAspectLocked()
         self.viewBox.invertY()
         self.pg_image = ImageItem()
         self.pg_image.setOpts(axisOrder='row-major')
         self.viewBox.addItem(self.pg_image)
-        self.raw_data = tifffile.imread('assets/test_peaks.tif')
-        self.set_qimage(self.raw_data)
-        self.pointer_radius = 1
+        self.raw_data = np.ones(expected_shape)
+        self.pointer_radius = 5
         self.pointers = []
+        self.old_pointers = []
         self.peaks = []
+        self.peak_pos = []
+        self.window_size = 20
+        self.fit_number = 0
+
+
+        self.line = LineItem(center=center, offset=line_offset, shape=expected_shape)
+        self.viewBox.addItem(self.line)
+
+        self.peak_timer = QtCore.QTimer()
+        self.peak_timer.timeout.connect(self.update_peaks)
+        self.peak_timer.start(5000)
+        self.fit_timer = QtCore.QTimer()
+        self.fit_timer.timeout.connect(self.update_peak_location)
+        self.fit_timer.start(500)
+
+    def update_peaks(self):
+        self.reset_line()
         self.get_peaks()
+
+    def update_peak_location(self):
         self.fit_peaks()
         self.set_pointers()
 
     def set_qimage(self, image_data):
+        self.raw_data = image_data
         self.pg_image.setImage(image_data)
         self.update()
 
     def get_peaks(self):
+        self.fit_timer.stop()
         data = np.copy(self.raw_data)
+        mean_image = np.mean(data)
+        data[:self.window_size,:] = mean_image * np.ones_like(data[:self.window_size,:])
+        data[:,:self.window_size] = mean_image * np.ones_like(data[:,:self.window_size])
+        data[-self.window_size:,:] = mean_image * np.ones_like(data[-self.window_size:,:])
+        data[:,-self.window_size:] = mean_image * np.ones_like(data[:,-self.window_size:])
         max_value = 1000000
+
+        self.old_pointers = self.pointers
         self.pointers = []
-        while max_value > np.mean(self.raw_data)*2:
+        self.peaks = []
+        while max_value > mean_image*1.5:
             max_value = np.max(data)
             max_pixel = np.where(data == max_value)
             max_pixel = [int(pixel[0]) for pixel in max_pixel]
-            if np.min(max_pixel) > 5 and max_pixel[0] < self.width-5 and max_pixel[1] < self.height-5:
-                data[max_pixel[0]-5:max_pixel[0]+6, max_pixel[1]-5:max_pixel[1]+6] = np.zeros((11,11))
+            if np.min(max_pixel) > self.window_size and max_pixel[0] < data.shape[0]-self.window_size and max_pixel[1] < data.shape[1]-self.window_size:
+                data[max_pixel[0]-self.window_size:max_pixel[0]+self.window_size+1,
+                     max_pixel[1]-self.window_size:max_pixel[1]+self.window_size+1] = np.zeros((self.window_size*2+1,
+                                                                                                self.window_size*2+1))
                 self.peaks.append(max_pixel)
                 self.add_pointer()
+                if len(self.peaks) > 16:
+                    break
             else:
                 data[max_pixel[0], max_pixel[1]] = np.mean(data)
+        self.fit_number = 0
+        self.fit_timer.start()
 
     def fit_peaks(self):
         data = np.copy(self.raw_data)
+        self.peak_pos = []
+
         for index, peak in enumerate(self.peaks):
-            peak_data = data[peak[0]-5:peak[0]+6, peak[1]-5:peak[1]+6]
-            x, y = self.centroidnp(peak_data)
-            x_image = peak[0] + x - 4.5
-            y_image = peak[1] + y - 4.5
-            self.peaks[index] = [x_image, y_image]
+            peak_data = data[peak[0]-self.window_size:peak[0]+self.window_size+1,
+                             peak[1]-self.window_size:peak[1]+self.window_size+1]
+            mask = peak_data < np.mean(peak_data)*1.5
+            peak_data[mask] = 0
+            x, y = center_of_mass(peak_data)
+            x_image = peak[0] + x - (self.window_size - 0.5)
+            y_image = peak[1] + y - (self.window_size - 0.5)
+            self.peak_pos.append([x_image, y_image])
+        self.fit_number += 1
+
 
     def set_pointers(self):
-        for index, peak in enumerate(self.peaks):
+        if self.fit_number == 1:
+            for pointer in self.old_pointers:
+                self.viewBox.removeItem(pointer)
+        for index, peak in enumerate(self.peak_pos):
             pointer = self.pointers[index]
-            radius = self.pointer_radius
-            pointer.setRect(peak[1]-radius,
-                            peak[0]-radius, radius*2, radius*2)
+            pointer.setPosition(peak)
+        if self.fit_number == 1:
+            for pointer in self.pointers:
+                pointer.show()
 
     def add_pointer(self):
-        radius = self.pointer_radius
-        pointer = QtWidgets.QGraphicsEllipseItem(0-radius, 0-radius, radius*2, radius*2)
-        pointer.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
-        pointer.setPen(QtGui.QPen(QtGui.QColorConstants.Transparent))
+        pointer = CrossItem()
+        pointer.hide()
         self.viewBox.addItem(pointer)
         self.pointers.append(pointer)
 
-    def centroidnp(self, data):
-        h, w = data.shape
-        x = np.arange(w)
-        y = np.arange(h)
-        vx = data.sum(axis=0)
-        vx = vx/vx.sum()
-        vy = data.sum(axis=1)
-        vy = vy/vy.sum()
-        return np.dot(vx,x),np.dot(vy,y)
+    def reset_line(self):
+        self.line.setPosition([0, self.raw_data.shape[1]/2])
+
+    # def centroidnp(self, data):
+    #     h, w = data.shape
+    #     x = np.arange(w)
+    #     y = np.arange(h)
+    #     vx = data.sum(axis=0)
+    #     vx = vx/vx.sum()
+    #     vy = data.sum(axis=1)
+    #     vy = vy/vy.sum()
+    #     return np.dot(vx,x),np.dot(vy,y)
+
+
+class LineItem(GraphicsObject):
+    """Alignment Line with angle and offset"""
+    def __init__(self, offset:float = -30, angle:float = -0.063948864, center:bool = False,
+                 shape:Tuple = (160,160)):
+        super().__init__()
+        self.offset = offset
+        self.angle = angle
+        self.shape = shape
+        self.center = center
+        self.picture = QtGui.QPicture()
+        self.color = '#00FFFF'
+        self.generatePicture()
+        self.setZValue(90)
+
+
+    def generatePicture(self):
+        """ Generate the line. The size should at some point be set depending on the Range of
+        the ViewBox for example to ensure always the same apparent size. """
+        size = self.shape
+        print(size)
+        painter = QtGui.QPainter(self.picture)
+        painter.setPen(mkPen(color=self.color, width=2))
+        dx = np.tan(self.angle)*size[1]/2
+        painter.drawLine(-dx, size[1], +dx, 0)
+        if self.center:
+            painter.drawLine(-size[0]/2, size[1]/2-dx, size[0]/2, size[1]/2+dx)
+        painter.end()
+
+    def setPosition(self, pos):
+        """ set the Position of the line after translating to a QPointF"""
+        pos = QtCore.QPointF(pos[1]+0.5 + self.offset, pos[0] + 0.5)
+        self.setPos(pos)
+
+    def paint(self, *painter):
+        """ I think this is used by the ViewBox when displaying the line """
+        painter[0].drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        """ Bounding rectangule of the line as QRectF """
+        return QtCore.QRectF(self.picture.boundingRect())
+
+
+class CrossItem(GraphicsObject):
+    """ A cross that can be added to a pg.ViewBox to point """
+    def __init__(self, rect=QtCore.QRectF(0, 0, 1, 1), color='#CC0000', parent=None):
+
+        super().__init__(parent)
+        self._rect = rect
+        self.color = color
+        self.picture = QtGui.QPicture()
+        self.generatePicture()
+        self.setZValue(100)
+
+    @property
+    def rect(self):
+        """ original rectangle give at initialization """
+        return self._rect
+
+    def generatePicture(self, pos=(0, 0)):
+        """ Generate the cross. The size should at some point be set depending on the Range of
+        the ViewBox for example to ensure always the same apparent size. """
+        size = 5
+        painter = QtGui.QPainter(self.picture)
+        painter.setPen(mkPen(color=self.color, width=3))
+        painter.setBrush(mkBrush(color=self.color))
+        painter.drawLine(pos[0]-size, pos[1]-size, pos[0]+size, pos[1]+size)
+        painter.drawLine(pos[0]+size, pos[1]-size, pos[0]-size, pos[1]+size)
+        painter.end()
+
+    def setPosition(self, pos):
+        """ set the Position of the cross after translating to a QPointF"""
+        pos = QtCore.QPointF(pos[1], pos[0])
+        self.setPos(pos)
+
+    def paint(self, *painter):
+        """ I think this is used by the ViewBox when displaying the cross """
+        painter[0].drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        """ Bounding rectangule of the cross as QRectF """
+        return QtCore.QRectF(self.picture.boundingRect())
 
 
 class RunningMean(PlotWidget):
@@ -375,14 +522,22 @@ class RunningMean(PlotWidget):
         self.mean = PlotCurveItem([], pen=QtGui.QPen(QtGui.QColor('#505050')))
         self.addItem(self.mean)
         self.means = []
+        self.window_size = int(300/2)
 
     def add_image(self, image):
-        self.add_value(image[0,0])
+        image = image.raw_image[1024-self.window_size:1024 + self.window_size,
+                                1024-self.window_size:1024 + self.window_size].flatten()
+        sorted_image = np.sort(image)
+        self.add_value(np.mean(sorted_image[-20:]))
+
 
     def add_value(self, new_value):
-        if len(self.means) >= 100:
+        if len(self.means) >= 200:
             self.means.pop(0)
-        self.means.append(new_value)
+        if len(self.means) > 5:
+            self.means.append(np.mean(self.means[-5:] + [new_value]))
+        else:
+            self.means.append(new_value)
         self.mean.setData(self.means)
 
 

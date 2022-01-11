@@ -68,6 +68,18 @@ class FilterFlipper(object):
             print('I dont know the Up/Down Position for this Flipper')
 
 
+def brightfield(on:bool = True):
+    flipper = FilterFlipper()
+    availableDevices = flipper.availableDevices
+    for i in range(len(availableDevices)):
+        flipper.connect(i)
+        if on:
+            flipper.moveUp()
+        else:
+            flipper.moveDown()
+        flipper.disconnect()
+
+
 def testFlippers():
     flipper = FilterFlipper()
     availableDevices = flipper.availableDevices
