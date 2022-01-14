@@ -1,16 +1,17 @@
 import sys
 from typing import Tuple
-from PyQt5 import QtGui, QtCore, QtWidgets, QtTest
+from PyQt5 import QtGui, QtCore, QtWidgets
 from pyqtgraph.functions import mkBrush, mkPen
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
-from qimage2ndarray import gray2qimage
-import tifffile
 import numpy as np
 import time
 from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
 from threading import Thread
+from event_thread import EventThread
 from MonogramCC import MonogramCC
 from scipy.ndimage import center_of_mass
+
+from data_structures import MMSettings
 
 # Adjust for different screen sizes
 QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
@@ -541,6 +542,18 @@ class RunningMean(PlotWidget):
         self.mean.setData(self.means)
 
 
+class SettingsView(QtWidgets.QWidget):
+    def __init__(self, event_thread):
+        super().__init__()
+        # event_thread.mda_settings_event.connect(self.update_settings)
+
+    # @QtCore.pyqtSlot(object)
+    # def update_settings(self, new_settings):
+    #     self.settings = new_settings
+    #     print(self.settings)
+
+
+
 class MiniApp(QtWidgets.QWidget):
     """ Makes a mini App that shows off the capabilities of the Widgets implemented here """
     def __init__(self, parent=None):
@@ -576,9 +589,12 @@ class TestThread(Thread):
 if __name__ == '__main__':
     import time
     app = QtWidgets.QApplication(sys.argv)
-    miniapp = MiniApp()
-    miniapp.show()
-    thread = TestThread(miniapp)
-    thread.start()
+    # miniapp = MiniApp()
+    # miniapp.show()
+    # thread = TestThread(miniapp)
+    # thread.start()
+
+    settings_view = SettingsView()
+    settings_view.show()
 
     sys.exit(app.exec_())

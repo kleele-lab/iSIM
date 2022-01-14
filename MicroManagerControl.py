@@ -63,5 +63,5 @@ class MicroManagerControl(QObject):
 
 
 if __name__ == '__main__':
-    import MainGUI
+    import gui.MainGUI as MainGUI
     MainGUI.main()

@@ -1,0 +1,9 @@
+LICENSE
+setup.py
+gui/GUIWidgets.py
+gui/MainGUI.py
+gui/__init__.py
+isimgui.egg-info/PKG-INFO
+isimgui.egg-info/SOURCES.txt
+isimgui.egg-info/dependency_links.txt
+isimgui.egg-info/top_level.txt

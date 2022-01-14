@@ -6,7 +6,7 @@ import json
 from PyQt5.QtCore import QObject, pyqtSignal
 import time
 
-from data_structures import PyImage
+from data_structures import PyImage, MMSettings
 
 SOCKET = '5556'
 
@@ -45,6 +45,10 @@ class EventThread(QObject):
         for topic in self.topics:
             self.socket.setsockopt_string(zmq.SUBSCRIBE, topic)
 
+        # Record times for events that we receive twice
+        self.last_acq_started = time.perf_counter()
+        self.last_custom_mda = time.perf_counter()
+
     def start(self, daemon=True):
         self.thread = threading.Thread(target=self.main_thread, args=(self.thread_stop, ),
                                        daemon=daemon)
@@ -77,7 +81,12 @@ class EventThread(QObject):
                 if 'ExposureChangedEvent' in eventString:
                     print(evt.get_new_exposure_time())
                 elif 'DefaultAcquisitionStartedEvent' in eventString:
-                    self.acquisition_started_event.emit(evt)
+                    if time.perf_counter() - self.last_acq_started > 0.2:
+                        self.acquisition_started_event.emit(evt)
+                        print('ACQ started Event emitted ', time.perf_counter())
+                    else:
+                        print('SKIPPED')
+                    self.last_acq_started = time.perf_counter()
                 elif 'DefaultAcquisitionEndedEvent' in eventString:
                     self.acquisition_ended_event.emit(evt)
                     print('Acquisition Ended')
@@ -101,13 +110,26 @@ class EventThread(QObject):
                 elif 'CustomSettingsEvent' in eventString:
                     self.settings_event.emit(evt.get_device(), evt.get_property(), evt.get_value())
                 elif 'CustomMDAEvent' in eventString:
-                    self.mda_settings_event.emit(evt.get_settings())
+                    if time.perf_counter() - self.last_custom_mda > 0.2:
+                        settings = evt.get_settings()
+                        # print(dir(settings))
+                        settings = MMSettings(java_settings=settings)
+                        self.mda_settings_event.emit(settings)
+                    else:
+                        print('SKIPPED')
+                    self.last_custom_mda = time.perf_counter()
+
+
+
                 else:
                     print('This event is not known yet')
             except zmq.error.Again:
                 pass
         # Thread was stopped, let's also close the socket then
         self.socket.close()
+
+
+
 
 def main():
     thread = EventThread()

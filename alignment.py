@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QTimer
 import nidaqmx
 import numpy as np
-import FilterFlipper
+import hardware.FilterFlipper as FilterFlipper
 
 
 
