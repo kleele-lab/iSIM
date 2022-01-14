@@ -6,7 +6,7 @@ import json
 from PyQt5.QtCore import QObject, pyqtSignal
 import time
 
-from data_structures import PyImage, MMSettings
+from isimgui.data_structures import PyImage, MMSettings
 
 SOCKET = '5556'
 
