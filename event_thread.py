@@ -1,3 +1,4 @@
+from xmlrpc.client import boolean
 from pycromanager import Bridge, core, Acquisition
 import threading
 import re
@@ -6,7 +7,7 @@ import json
 from PyQt5.QtCore import QObject, pyqtSignal
 import time
 
-from isimgui.data_structures import PyImage, MMSettings
+from data_structures import PyImage, MMSettings
 
 SOCKET = '5556'
 
@@ -19,6 +20,7 @@ class EventThread(QObject):
     new_image_event = pyqtSignal(PyImage)
     settings_event = pyqtSignal(str, str, str)
     mda_settings_event = pyqtSignal(object)
+    live_mode_event = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
@@ -128,7 +130,9 @@ class EventThread(QObject):
                     self.last_custom_mda = time.perf_counter()
                 elif "DefaultLiveModeEvent" in eventString:
                     self.blockImages = evt.get_is_on()
+                    self.live_mode_event.emit(self.blockImages)
                     print("Blocking images in live: ", self.blockImages)
+
 
 
                 else:

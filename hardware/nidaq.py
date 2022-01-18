@@ -21,21 +21,15 @@ class NIDAQ(QObject):
         self.system = nidaqmx.system.System.local()
 
         self.sampling_rate = 500
-
         self.update_settings(self.settings)
 
-        self.task = nidaqmx.Task()
-        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao0') # galvo channel
+
         self.galvo = Galvo(self)
-        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao1') # z stage
         self.stage = Stage(self)
-        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao2') # camera channel
         self.camera = Camera(self)
-        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao3') # aotf blanking channel
-        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao4') # aotf 488 channel
-        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao5') # aotf 561 channel
         self.aotf = AOTF(self)
 
+        self.init_task()
         self.task.timing.cfg_samp_clk_timing(rate=self.smpl_rate,
                                 sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                                 samps_per_chan=100)
@@ -43,11 +37,25 @@ class NIDAQ(QObject):
                                                                       auto_start=True)
 
         self.acq = Acquisition(self, settings)
+        self.live = LiveMode(self)
 
         self.event_thread = event_thread
+        self.event_thread.live_mode_event.connect(self.start_live)
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
-        self.event_thread.mda_settings_event.connect(self.new_settings)
         self.event_thread.acquisition_ended_event.connect(self.acq_done)
+        self.event_thread.mda_settings_event.connect(self.new_settings)
+        self.event_thread.settings_event.connect(self.power_settings)
+
+    def init_task(self):
+        try: self.task.close()
+        except: print("Task close failed")
+        self.task = nidaqmx.Task()
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao0') # galvo channel
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao1') # z stage
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao2') # camera channel
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao3') # aotf blanking channel
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao4') # aotf 488 channel
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao5') # aotf 561 channel
 
     def update_settings(self, new_settings):
         self.cycle_time = new_settings.channels['488']['exposure']
@@ -61,9 +69,20 @@ class NIDAQ(QObject):
 
     @pyqtSlot(MMSettings)
     def new_settings(self, new_settings: MMSettings):
+        self.settings = new_settings
         self.update_settings(new_settings)
         self.acq.update_settings(new_settings)
         print('NEW SETTINGS SET')
+
+    @pyqtSlot(str, str, str)
+    def power_settings(self, device, property, value):
+        if device == "488_AOTF":
+            self.settings.channels['488']['power'] = float(value)/10
+            self.aotf.power_488 = float(value)/10
+        elif device == "561_AOTF":
+            self.settings.channels['561']['power'] = float(value)/10
+            self.aotf.power_561 = float(value)/10
+        print(self.settings.channels)
 
     @pyqtSlot(object)
     def run_acquisition_task(self, _):
@@ -77,6 +96,85 @@ class NIDAQ(QObject):
         self.event_thread.mda_settings_event.connect(self.new_settings)
         time.sleep(1)
         self.task.stop()
+
+    def generate_one_timepoint(self, live_channel: int = None):
+        galvo = self.galvo.one_frame(self.settings)
+        stage = self.stage.one_frame(self.settings)
+        camera = self.camera.one_frame(self.settings)
+
+
+        if not self.settings.use_channels or live_channel is not None:
+            channel_number = 0 if live_channel is None else live_channel
+            aotf = self.aotf.one_frame(self.settings,
+                                       list(self.settings.channels.values())[channel_number])
+            timepoint = np.vstack((galvo, stage, camera, aotf))
+        else:
+            channels_data = []
+            for channel in self.settings.channels.values():
+                if channel['use']:
+                    aotf = self.aotf.one_frame(self.settings, channel)
+                    channel_data = np.vstack((galvo, stage, camera, aotf))
+                    channels_data.append(channel_data)
+            timepoint = np.hstack(channels_data)
+        return timepoint
+
+    def start_live(self, live_is_on):
+        self.live.toggle(live_is_on)
+
+class LiveMode(QObject):
+    def __init__(self, ni:NIDAQ):
+        super().__init__()
+        self.ni = ni
+        self.make_daq_data()
+        self.stop = False
+
+    def update_settings(self, new_settings):
+        self.ni.init_task()
+        self.ni.task.timing.cfg_samp_clk_timing(rate=self.ni.smpl_rate,
+                                             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
+                                             samps_per_chan=self.daq_data.shape[1])
+        self.ni.task.out_stream.regen_mode = nidaqmx.constants.RegenerationMode.DONT_ALLOW_REGENERATION
+        self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
+                                                                         auto_start=False)
+        self.ni.stream.write_many_sample(self.daq_data)
+        self.ni.task.register_every_n_samples_transferred_from_buffer_event(2, self.get_new_data)
+
+    def get_new_data(self, task_handle, every_n_samples_event_type, number_of_samples, callback_data):
+        print('NEW DATA', time.perf_counter())
+        if self.stop:
+            self.stop = False
+            print("STOP")
+            self.ni.stream.write_many_sample(self.stop_data)
+            print("STOPPING")
+            self.ni.task.stop()
+            self.ni.task.close()
+        else:
+            self.ni.stream.write_many_sample(self.daq_data)
+        return 0
+
+    def make_daq_data(self):
+        timepoint = self.ni.generate_one_timepoint(0)
+        no_frames = np.max([1, round(200/self.ni.cycle_time)])
+        self.daq_data = np.tile(timepoint, no_frames)
+        stop_data = np.asarray(
+                [[self.ni.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
+        self.stop_data = np.tile(stop_data, self.daq_data.shape[1])
+        print(self.daq_data.shape[1])
+
+    def toggle(self, live_is_on):
+        if live_is_on:
+            self.stop = False
+            self.update_settings(self.ni.settings)
+            self.ni.task.start()
+            print("STARTED", time.perf_counter())
+        else:
+            self.stop = True
+            # time.sleep(1)
+            # self.ni.task.stop()
+
+
+
+
 
 
 class Acquisition(QObject):
@@ -93,38 +191,21 @@ class Acquisition(QObject):
         self.ready = False
         self.settings = new_settings
         self.make_daq_data()
+        self.ni.init_task()
         self.ni.task.timing.cfg_samp_clk_timing(rate=self.ni.smpl_rate,
                                 sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                                 samps_per_chan=self.daq_data.shape[1])
-        print('Stream length ', self.daq_data.shape[1])
         self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
-                                                                         auto_start=True)
+                                                                         auto_start=False)
+        print('Stream length ', self.daq_data.shape[1])
+
         self.ready = True
 
     def make_daq_data(self):
-        timepoint = self.generate_one_timepoint()
+        timepoint = self.ni.generate_one_timepoint()
         # print('timepoint_shape ', timepoint.shape)
         timepoint = self.add_interval(timepoint)
         self.daq_data = np.tile(timepoint, self.settings.timepoints)
-
-    def generate_one_timepoint(self):
-        galvo = self.ni.galvo.one_frame(self.settings)
-        stage = self.ni.stage.one_frame(self.settings)
-        camera = self.ni.camera.one_frame(self.settings)
-
-
-        if not self.settings.use_channels:
-            aotf = self.ni.aotf.one_frame(self.settings, list(self.settings.channels.values())[0])
-            timepoint = np.vstack((galvo, stage, camera, aotf))
-        else:
-            channels_data = []
-            for channel in self.settings.channels.values():
-                if channel['use']:
-                    aotf = self.ni.aotf.one_frame(self.settings, channel)
-                    channel_data = np.vstack((galvo, stage, camera, aotf))
-                    channels_data.append(channel_data)
-            timepoint = np.hstack(channels_data)
-        return timepoint
 
     def add_interval(self, timepoint):
         if (self.ni.smpl_rate*self.settings.interval_ms/1000 <= timepoint.shape[1] and
@@ -142,8 +223,10 @@ class Acquisition(QObject):
         return timepoint
 
     def run_acquisition(self):
+        self.update_settings(self.settings)
         print("WRITING, ", self.daq_data.shape)
         written = self.ni.stream.write_many_sample(self.daq_data, timeout=20)
+        self.ni.task.start()
         print('================== Data written        ', written)
 
 
@@ -186,7 +269,6 @@ class Galvo:
             frame = np.hstack([delay, frame])
 
         return frame
-
 
 
 class Stage:
@@ -243,15 +325,21 @@ class AOTF:
     def __init__(self, ni:NIDAQ):
         self.ni = ni
         self.blank_voltage = 10
+        self.power_488 = 10
+        self.power_561 = 10
 
     def one_frame(self, settings:MMSettings, channel:dict):
         blank = make_pulse(self.ni, 0, self.blank_voltage, 0)
         if channel['name'] == '488':
-            aotf_488 = make_pulse(self.ni, 0, channel['power']/10, 0)
+            try: power = channel['power']/10
+            except: power = self.power_488
+            aotf_488 = make_pulse(self.ni, 0, power, 0)
             aotf_561 = make_pulse(self.ni, 0, 0, 0)
         elif channel['name'] == '561':
+            try: power = channel['power']/10
+            except: power = self.power_561
             aotf_488 = make_pulse(self.ni, 0, 0, 0)
-            aotf_561 = make_pulse(self.ni, 0, channel['power']/10, 0)
+            aotf_561 = make_pulse(self.ni, 0, power, 0)
         aotf = np.vstack((blank, aotf_488, aotf_561))
         aotf = self.add_delays(aotf, settings)
         return aotf

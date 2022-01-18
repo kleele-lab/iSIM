@@ -103,7 +103,7 @@ class MainGUI(QtWidgets.QWidget):
 
     @pyqtSlot(object)
     def handle_mda_settings(self, settings):
-        pass
+        print(settings.root())
 
     def closeEvent(self, event):
         try:

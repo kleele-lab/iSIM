@@ -70,6 +70,6 @@ class MMSettings:
                                      'use': channel.use_channel(),
                                      'exposure': channel.exposure(),
                                      'z_stack': channel.do_z_stack(),
-                                     'power': 10}
+                                     'power': None}
             if self.channels[config]['use']:
                 self.n_channels += 1
