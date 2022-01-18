@@ -34,9 +34,15 @@ class FocusSlider(QtWidgets.QSlider):
         self.arrows = self.getArrows()
         self.setMaximum(20200)
         self.valueChanged.connect(self.z_value_changed)
+        self.sliderMoved.connect(self.slider_moved)
 
         # Try to connect the Monogram Controller
         self.monogram = None
+        self.my_event = False
+
+    def slider_moved(self, e):
+        self.my_event = True
+
 
     def connect_monogram(self, monogram):
         self.monogram = monogram
@@ -44,7 +50,11 @@ class FocusSlider(QtWidgets.QSlider):
 
     def z_value_changed(self, pos):
         self.repaint()
-        self.z_stage_position_python.emit(pos/100)
+
+        if self.my_event:
+            print('Slider sending event')
+            self.z_stage_position_python.emit(pos/100)
+            self.my_event = False
 
     def paintEvent(self, e):
         super().paintEvent(e)
@@ -59,6 +69,7 @@ class FocusSlider(QtWidgets.QSlider):
 
     def wheelEvent(self,event):
         pos = self.value()+int((event.angleDelta().y()/120)*self.step)
+        self.my_event = True
         self.setValue(pos)
 
     def keyPressEvent(self, event):
@@ -70,6 +81,7 @@ class FocusSlider(QtWidgets.QSlider):
     @QtCore.pyqtSlot(float)
     def monogram_event(self, relative_move: float):
         pos = self.value() + int(relative_move*150)
+        self.my_event = True
         self.setValue(pos)
 
     def handlePos(self):

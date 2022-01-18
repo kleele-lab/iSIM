@@ -30,6 +30,7 @@ class MMSettings:
     post_delay: float = 0.03
 
     java_channels: Any = None
+    use_channels = True
     channels: List[MMChannel] = None
     n_channels: int = 0
 
@@ -53,6 +54,7 @@ class MMSettings:
             self.timepoints = self.java_settings.num_frames()
             self.java_channels = self.java_settings.channels()
             self.acq_order = self.java_settings.acq_order_mode()
+            self.use_channels = self.java_settings.use_channels()
 
         try:
             self.java_channels.size()

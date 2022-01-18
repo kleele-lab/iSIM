@@ -48,6 +48,9 @@ class EventThread(QObject):
         # Record times for events that we receive twice
         self.last_acq_started = time.perf_counter()
         self.last_custom_mda = time.perf_counter()
+        self.last_stage_position = time.perf_counter()
+        self.blockZ = False
+        self.blockImages = False
 
     def start(self, daemon=True):
         self.thread = threading.Thread(target=self.main_thread, args=(self.thread_stop, ),
@@ -91,14 +94,19 @@ class EventThread(QObject):
                     self.acquisition_ended_event.emit(evt)
                     print('Acquisition Ended')
                 elif 'StagePositionChangedEvent' in eventString:
-                    print(evt.get_pos())
-                    self.stage_position_changed_event.emit(evt.get_pos()*100)
+                    if self.blockZ > 0 or time.perf_counter() - self.last_stage_position < 0.05:
+                        print("BLOCKED ", self.blockZ)
+                    else:
+                        self.stage_position_changed_event.emit(evt.get_pos()*100)
+                    self.last_stage_position = time.perf_counter()
+                    self.blockZ = False
                 elif 'XYStagePositionChangedEvent' in eventString:
                     print(evt.get_x_pos())
                     print(evt.get_y_pos())
                     self.xy_stage_position_changed_event.emit((evt.get_x_pos(), evt.get_y_pos()))
                 elif 'DefaultNewImageEvent' in eventString:
-                    # image = self.predef_events.default_new_image_event.get_image()
+                    if self.blockImages:
+                        return
                     image = evt.get_image()
                     py_image = PyImage(image.get_raw_pixels().reshape([image.get_width(),
                                                                        image.get_height()]),
@@ -118,7 +126,9 @@ class EventThread(QObject):
                     else:
                         print('SKIPPED')
                     self.last_custom_mda = time.perf_counter()
-
+                elif "DefaultLiveModeEvent" in eventString:
+                    self.blockImages = evt.get_is_on()
+                    print("Blocking images in live: ", self.blockImages)
 
 
                 else:

@@ -1,5 +1,5 @@
 import MicroManagerControl
-from PyQt5.QtCore import pyqtSlot, pyqtSignal
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer
 from gui.GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean
 from event_thread import EventThread
 from MonogramCC import MonogramCC
@@ -14,25 +14,28 @@ QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.P
 class MainGUI(QtWidgets.QWidget):
     """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
 
-    def __init__(self, parent=None, monogram:bool = True):
+    def __init__(self, parent=None, monogram:bool = True, event_thread = None):
         super(MainGUI, self).__init__(parent=parent)
-        self.position_history = PositionHistory()
+        # self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
         # self.live_view = LiveView()
         # self.alignment_widget = AlignmentWidget()
         try:  # this makes sense only if Micro-Manager is running
-            self.event_thread = EventThread()
-            self.event_thread.start()
+            if event_thread == None:
+                self.event_thread = EventThread()
+                self.event_thread.start()
+            else:
+                self.event_thread = event_thread
             self.event_thread.xy_stage_position_changed_event.connect(self.set_xy_pos)
             self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
-            self.event_thread.new_image_event.connect(self.set_image)
+            # self.event_thread.new_image_event.connect(self.set_image)
             self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
             self.event_thread.settings_event.connect(self.handle_settings)
             self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
 
-            self.mm_interface = MicroManagerControl.MicroManagerControl()
-            self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
+            self.mm_interface = MicroManagerControl.MicroManagerControl(event_thread=self.event_thread)
+            # self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
             self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
         except TimeoutError as error:
             print(error)
@@ -43,11 +46,12 @@ class MainGUI(QtWidgets.QWidget):
             if monogram:
                 self.monogram = MonogramCC()
                 self.focus_slider.connect_monogram(self.monogram)
+
         except OSError as error:
             print(error)
 
         self.setLayout(QtWidgets.QHBoxLayout())
-        self.layout().addWidget(self.position_history)
+        # self.layout().addWidget(self.position_history)
         self.layout().addWidget(self.focus_slider)
         # self.layout().addWidget(self.live_view)
         # self.layout().addWidget(self.alignment_widget)
@@ -76,8 +80,8 @@ class MainGUI(QtWidgets.QWidget):
     def set_z_position_python(self, pos):
         self.event_thread.blockSignals(True)
         self.mm_interface.set_z_position(pos)
-        time.sleep(0.01)
         self.event_thread.blockSignals(False)
+
 
     @pyqtSlot()
     def set_bit_depth(self):
@@ -136,7 +140,7 @@ class AlignmentGUI(QtWidgets.QWidget):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    miniapp = AlignmentGUI()
+    miniapp = MainGUI()
     miniapp.show()
     sys.exit(app.exec_())
 

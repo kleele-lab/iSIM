@@ -10,9 +10,13 @@ from qimage2ndarray import gray2qimage
 
 class MicroManagerControl(QObject):
 
-    def __init__(self):
+    def __init__(self, event_thread=None):
         super().__init__()
-        self.bridge = Bridge()
+        if event_thread is None:
+            self.bridge = Bridge()
+        else:
+            self.event_thread = event_thread
+            self.bridge = event_thread.bridge
         self.studio = self.bridge.get_studio()
         self.data = self.studio.data
         self.core = self.bridge.get_core()
@@ -21,9 +25,9 @@ class MicroManagerControl(QObject):
         self.zPosition = self.core.get_position()
         self.move_to = self.zPosition
 
-        self.z_update_timer = QTimer()
-        self.z_update_timer.timeout.connect(self.update_z)
-        self.z_update_timer.start(30)
+        # self.z_update_timer = QTimer()
+        # self.z_update_timer.timeout.connect(self.update_z)
+        # self.z_update_timer.start(30)
 
     @pyqtSlot(object)
     def set_xy_position(self, pos: tuple):
@@ -37,15 +41,11 @@ class MicroManagerControl(QObject):
         if new_pos < 200 and new_pos > 0:
             self.move_to = self.move_to + pos
 
-    def update_z(self):
-        if self.zPosition is not self.move_to:
-            self.set_z_position(self.move_to)
-            self.zPosition = self.move_to
-
     @pyqtSlot(float)
     def set_z_position(self, pos: float):
-        self.core.set_position(self.zPosition)
-        print(self.move_to)
+        self.event_thread.blockZ = True
+        print("Sending pos to MM")
+        self.core.set_position(pos)
 
     def set_bit_depth(self):
         bit_depth = self.core.get_image_bit_depth

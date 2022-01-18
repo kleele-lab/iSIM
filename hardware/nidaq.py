@@ -1,4 +1,5 @@
 
+from sqlite3 import DataError
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from data_structures import MMSettings
 import nidaqmx
@@ -16,16 +17,18 @@ class NIDAQ(QObject):
 
     def __init__(self, event_thread: EventThread, settings: MMSettings = MMSettings()):
         super().__init__()
+        self.settings = settings
         self.system = nidaqmx.system.System.local()
 
         self.sampling_rate = 500
 
-        self.update_settings(settings)
+        self.update_settings(self.settings)
 
         self.task = nidaqmx.Task()
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao0') # galvo channel
         self.galvo = Galvo(self)
-        # self.task.ao_channels.add_ao_voltage_chan('Dev1/ao1') # z stage
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao1') # z stage
+        self.stage = Stage(self)
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao2') # camera channel
         self.camera = Camera(self)
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao3') # aotf blanking channel
@@ -44,10 +47,11 @@ class NIDAQ(QObject):
         self.event_thread = event_thread
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
         self.event_thread.mda_settings_event.connect(self.new_settings)
+        self.event_thread.acquisition_ended_event.connect(self.acq_done)
 
     def update_settings(self, new_settings):
         self.cycle_time = new_settings.channels['488']['exposure']
-        self.sweeps_per_frame = settings.sweeps_per_frame
+        self.sweeps_per_frame = new_settings.sweeps_per_frame
         self.frame_rate = 1/(self.cycle_time*self.sweeps_per_frame/1000)
         self.smpl_rate = round(self.sampling_rate*self.frame_rate*self.sweeps_per_frame*self.sweeps_per_frame)
         self.n_points = self.sampling_rate*self.sweeps_per_frame
@@ -63,12 +67,16 @@ class NIDAQ(QObject):
 
     @pyqtSlot(object)
     def run_acquisition_task(self, _):
-        self.task.stop()
+        self.event_thread.mda_settings_event.disconnect(self.new_settings)
         print('Received ACQ STARTED EVT')
         time.sleep(0.5)
         self.acq.run_acquisition()
 
-
+    @pyqtSlot(object)
+    def acq_done(self, _):
+        self.event_thread.mda_settings_event.connect(self.new_settings)
+        time.sleep(1)
+        self.task.stop()
 
 
 class Acquisition(QObject):
@@ -80,12 +88,6 @@ class Acquisition(QObject):
         self.daq_data = None
         self.ready = True
         self.make_daq_data()
-        # self.ni.task.timing.cfg_samp_clk_timing(rate=self.ni.smpl_rate,
-        #                         sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-        #                         samps_per_chan=self.daq_data.shape[1])
-        # # print('Stream length ', self.daq_data.shape[1])
-        # self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
-        #                                                                  auto_start=True)
 
     def update_settings(self, new_settings):
         self.ready = False
@@ -105,38 +107,42 @@ class Acquisition(QObject):
         timepoint = self.add_interval(timepoint)
         self.daq_data = np.tile(timepoint, self.settings.timepoints)
 
-
     def generate_one_timepoint(self):
-        channels_data = []
-        for channel in self.settings.channels.values():
-            # print(channel)
-            if channel['use']:
-                galvo = self.ni.galvo.one_frame(self.settings)
-                camera = self.ni.camera.one_frame(self.settings)
-                aotf = self.ni.aotf.one_frame(self.settings, channel)
-                channel_data = np.vstack((galvo, camera, aotf))
-                # print('channel shape   ', channel_data.shape)
-                channels_data.append(channel_data)
-        timepoint = np.hstack(channels_data)
+        galvo = self.ni.galvo.one_frame(self.settings)
+        stage = self.ni.stage.one_frame(self.settings)
+        camera = self.ni.camera.one_frame(self.settings)
+
+
+        if not self.settings.use_channels:
+            aotf = self.ni.aotf.one_frame(self.settings, list(self.settings.channels.values())[0])
+            timepoint = np.vstack((galvo, stage, camera, aotf))
+        else:
+            channels_data = []
+            for channel in self.settings.channels.values():
+                if channel['use']:
+                    aotf = self.ni.aotf.one_frame(self.settings, channel)
+                    channel_data = np.vstack((galvo, stage, camera, aotf))
+                    channels_data.append(channel_data)
+            timepoint = np.hstack(channels_data)
         return timepoint
 
     def add_interval(self, timepoint):
-        if (self.ni.smpl_rate*settings.interval_ms/1000 <= timepoint.shape[1] and
-            settings.interval_ms > 0):
+        if (self.ni.smpl_rate*self.settings.interval_ms/1000 <= timepoint.shape[1] and
+            self.settings.interval_ms > 0):
             print('Error: interval time shorter than time required to acquire single timepoint.')
-            settings.interval_ms = 0
+            self.settings.interval_ms = 0
 
-        if settings.interval_ms > 0:
-            missing_samples = round(self.ni.smpl_rate * settings.interval_ms/1000-timepoint.shape[1])
+        if self.settings.interval_ms > 0:
+            missing_samples = round(self.ni.smpl_rate * self.settings.interval_ms/1000-timepoint.shape[1])
             galvo = np.ones(missing_samples) * self.ni.galvo.parking_voltage
             rest = np.zeros((timepoint.shape[0] - 1, missing_samples))
             delay = np.vstack([galvo, rest])
             timepoint = np.hstack([timepoint, delay])
+        print("INTERVAL: ", self.settings.interval_ms)
         return timepoint
 
-
     def run_acquisition(self):
-        print("WRITING")
+        print("WRITING, ", self.daq_data.shape)
         written = self.ni.stream.write_many_sample(self.daq_data, timeout=20)
         print('================== Data written        ', written)
 
@@ -178,6 +184,33 @@ class Galvo:
         if settings.pre_delay > 0:
             delay = np.ones(round(self.ni.smpl_rate * settings.pre_delay)) * self.parking_voltage
             frame = np.hstack([delay, frame])
+
+        return frame
+
+
+
+class Stage:
+    #TODO: This was copied from the Camera, make adjustments for the stage!
+    def __init__(self, ni: NIDAQ):
+        self.ni = ni
+        self.pulse_voltage = 5
+
+    def one_frame(self, settings):
+        stage_frame = make_pulse(self.ni, 5, 0, 0)
+        stage_frame = np.zeros_like(stage_frame)
+        stage_frame = self.add_delays(stage_frame, settings)
+        return stage_frame
+
+    def add_delays(self, frame, settings):
+        if settings.post_delay > 0:
+            delay = np.zeros(round(self.ni.smpl_rate * settings.post_delay))
+            frame = np.hstack([frame, delay])
+
+        if settings.pre_delay > 0:
+            delay = np.zeros(round(self.ni.smpl_rate * settings.pre_delay))
+            #TODO whty is predelay after camera trigger?
+            # Maybe because the camera 'stores' the trigger?
+            frame = np.hstack([frame, delay])
 
         return frame
 
@@ -233,6 +266,8 @@ class AOTF:
             frame = np.hstack([delay, frame])
 
         return frame
+
+
 
 
 if __name__ == '__main__':
