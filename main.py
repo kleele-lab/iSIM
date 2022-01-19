@@ -13,6 +13,7 @@ def main():
     channels = {'488': {'name':'488', 'use': True, 'exposure': 100, 'power': 10},
                 '561': {'name':'561', 'use': True, 'exposure': 100, 'power':10}}
     settings = MMSettings(channels=channels, n_channels=2)
+    settings.slices = [109, 110, 111]
 
     event_thread = EventThread()
     event_thread.start()
@@ -22,9 +23,9 @@ def main():
     miniapp = MainGUI(event_thread=event_thread)
     miniapp.show()
 
+    ni.set_start_z_position.connect(miniapp.mm_interface.set_z_position)
+
     sys.exit(app.exec_())
-
-
 
 
 

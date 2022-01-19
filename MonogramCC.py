@@ -19,27 +19,15 @@ class MonogramCC(QObject):
         super().__init__()
         pygame.init()
         self.initController()
-        # self.bridge = Bridge()
-        # self.core = self.bridge.get_core()
 
         self.thread = QThread()
         self.worker = self.Listener(self.device, self)
         self.worker.moveToThread(self.thread)
         self.worker.monogram_stage_position_event.connect(self.monogram_stage_position_event)
-        self.worker.started_moving.connect(self.start_moving)
+
         self.thread.started.connect(self.worker.startListen)
         self.thread.start()
 
-        # self.stop_moving_timer = QTimer()
-        # self.z_update_timer.timeout.connect(self.stop_moving)
-        # self.z_update_timer.start(1000)
-        self.moving = False
-
-    def stop_moving(self):
-        self.moving = False
-
-    def start_moving(self):
-        self.moving = True
 
     def initController(self):
         joystick_count = pygame.joystick.get_count()
@@ -54,7 +42,7 @@ class MonogramCC(QObject):
 
     class Listener(QObject):
         monogram_stage_position_event = pyqtSignal(float)
-        started_moving = pyqtSignal(float)
+
         def __init__(self, device, parent):
             super().__init__()
             self.device = device
@@ -71,10 +59,8 @@ class MonogramCC(QObject):
             done = False
             print('Monogram started')
             while done == False:
-                event = pygame.event.wait()
+                event = pygame.event.wait(timeout=500)
                 if event.type == 1536:  # AxisMotion
-                    if not self.parent.moving:
-                        self.parent.moving = True
                     self.updatePos(event.value)
                 if event.type == 1540:  # ButtonUp
                     if event.button == 0:
@@ -132,6 +118,7 @@ class MonogramCC(QObject):
             # elif speed < CUTOFF_SPEEDDOWN:
             #     relative_move = speed/CUTOFF_SPEEDDOWN * relative_move
             return relative_move
+
 
 def main(control:bool = False):
     app = QCoreApplication(sys.argv)

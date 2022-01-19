@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget
+from zlib import DEF_BUF_SIZE
 from pycromanager import Bridge
 from PyQt5.QtCore import QObject, QTimer, pyqtSlot
 from PyQt5.QtGui import QImage
@@ -25,10 +25,6 @@ class MicroManagerControl(QObject):
         self.zPosition = self.core.get_position()
         self.move_to = self.zPosition
 
-        # self.z_update_timer = QTimer()
-        # self.z_update_timer.timeout.connect(self.update_z)
-        # self.z_update_timer.start(30)
-
     @pyqtSlot(object)
     def set_xy_position(self, pos: tuple):
         self.core.set_xy_position(pos[0], pos[1])
@@ -44,7 +40,7 @@ class MicroManagerControl(QObject):
     @pyqtSlot(float)
     def set_z_position(self, pos: float):
         self.event_thread.blockZ = True
-        print("Sending pos to MM")
+        print("Sending pos to MM", pos)
         self.core.set_position(pos)
 
     def set_bit_depth(self):
@@ -60,6 +56,9 @@ class MicroManagerControl(QObject):
         qimage = gray2qimage(image, normalize=normalize)
         # print(time.perf_counter() - t1)
         return qimage
+
+    def close(self):
+        self.bridge.close()
 
 
 if __name__ == '__main__':

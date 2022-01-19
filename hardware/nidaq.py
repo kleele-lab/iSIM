@@ -1,10 +1,14 @@
 
+from lib2to3.pytree import convert
 from sqlite3 import DataError
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from MicroManagerControl import MicroManagerControl
 from data_structures import MMSettings
 import nidaqmx
 import nidaqmx.stream_writers
 import numpy as np
+import copy
+
 
 import time
 from event_thread import EventThread
@@ -14,6 +18,7 @@ from gui.GUIWidgets import SettingsView
 class NIDAQ(QObject):
 
     new_ni_settings = pyqtSignal(MMSettings)
+    set_start_z_position = pyqtSignal(float)
 
     def __init__(self, event_thread: EventThread, settings: MMSettings = MMSettings()):
         super().__init__()
@@ -23,18 +28,10 @@ class NIDAQ(QObject):
         self.sampling_rate = 500
         self.update_settings(self.settings)
 
-
         self.galvo = Galvo(self)
         self.stage = Stage(self)
         self.camera = Camera(self)
         self.aotf = AOTF(self)
-
-        self.init_task()
-        self.task.timing.cfg_samp_clk_timing(rate=self.smpl_rate,
-                                sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                samps_per_chan=100)
-        self.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.task.out_stream,
-                                                                      auto_start=True)
 
         self.acq = Acquisition(self, settings)
         self.live = LiveMode(self)
@@ -98,28 +95,42 @@ class NIDAQ(QObject):
         self.task.stop()
 
     def generate_one_timepoint(self, live_channel: int = None):
-        galvo = self.galvo.one_frame(self.settings)
-        stage = self.stage.one_frame(self.settings)
-        camera = self.camera.one_frame(self.settings)
+        iter_slices = copy.deepcopy(self.settings.slices)
+        iter_slices_rev = copy.deepcopy(iter_slices)
+        iter_slices_rev.reverse()
 
+        galvo = self.galvo.one_frame(self.settings)
+        camera = self.camera.one_frame(self.settings)
 
         if not self.settings.use_channels or live_channel is not None:
             channel_number = 0 if live_channel is None else live_channel
+            stage = self.stage.one_frame(self.settings, 0)
             aotf = self.aotf.one_frame(self.settings,
                                        list(self.settings.channels.values())[channel_number])
             timepoint = np.vstack((galvo, stage, camera, aotf))
         else:
+            z_iter = 0
             channels_data = []
             for channel in self.settings.channels.values():
                 if channel['use']:
-                    aotf = self.aotf.one_frame(self.settings, channel)
-                    channel_data = np.vstack((galvo, stage, camera, aotf))
-                    channels_data.append(channel_data)
+                    slices_data = []
+                    slices = iter_slices if not np.mod(z_iter, 2) else iter_slices_rev
+                    for sli in slices:
+                        aotf = self.aotf.one_frame(self.settings, channel)
+                        offset = sli - self.settings.slices[0]
+                        stage = self.stage.one_frame(self.settings, offset)
+                        data = np.vstack((galvo, stage, camera, aotf))
+                        slices_data.append(data)
+                    z_iter += 1
+                    data = np.hstack(slices_data)
+                    channels_data.append(data)
             timepoint = np.hstack(channels_data)
         return timepoint
 
     def start_live(self, live_is_on):
         self.live.toggle(live_is_on)
+
+
 
 class LiveMode(QObject):
     def __init__(self, ni:NIDAQ):
@@ -169,20 +180,15 @@ class LiveMode(QObject):
             print("STARTED", time.perf_counter())
         else:
             self.stop = True
-            # time.sleep(1)
-            # self.ni.task.stop()
-
-
-
-
 
 
 class Acquisition(QObject):
-
+    set_start_z_position = pyqtSignal(float)
     def __init__(self, ni:NIDAQ, settings: MMSettings):
         super().__init__()
         self.settings = settings
         self.ni = ni
+        self.set_start_z_position.connect(self.ni.set_start_z_position)
         self.daq_data = None
         self.ready = True
         self.make_daq_data()
@@ -198,7 +204,6 @@ class Acquisition(QObject):
         self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
                                                                          auto_start=False)
         print('Stream length ', self.daq_data.shape[1])
-
         self.ready = True
 
     def make_daq_data(self):
@@ -224,6 +229,10 @@ class Acquisition(QObject):
 
     def run_acquisition(self):
         self.update_settings(self.settings)
+        if self.settings.use_slices:
+            print("SET STARTING POSITION")
+            self.set_start_z_position.emit(self.settings.slices[0])
+            time.sleep(0.1)
         print("WRITING, ", self.daq_data.shape)
         written = self.ni.stream.write_many_sample(self.daq_data, timeout=20)
         self.ni.task.start()
@@ -276,23 +285,26 @@ class Stage:
     def __init__(self, ni: NIDAQ):
         self.ni = ni
         self.pulse_voltage = 5
+        self.calibration = 202.161
+        self.max_v = 10
 
-    def one_frame(self, settings):
-        stage_frame = make_pulse(self.ni, 5, 0, 0)
-        stage_frame = np.zeros_like(stage_frame)
+    def one_frame(self, settings, height_offset):
+        height_offset = self.convert_z(height_offset)
+        stage_frame = make_pulse(self.ni, height_offset, height_offset, 0)
         stage_frame = self.add_delays(stage_frame, settings)
         return stage_frame
 
+    def convert_z(self, z_um):
+        return (z_um/self.calibration) * self.max_v
+
     def add_delays(self, frame, settings):
+        delay = np.ones(round(self.ni.smpl_rate * settings.post_delay))
+        delay = delay * frame[-1]
         if settings.post_delay > 0:
-            delay = np.zeros(round(self.ni.smpl_rate * settings.post_delay))
             frame = np.hstack([frame, delay])
 
         if settings.pre_delay > 0:
-            delay = np.zeros(round(self.ni.smpl_rate * settings.pre_delay))
-            #TODO whty is predelay after camera trigger?
-            # Maybe because the camera 'stores' the trigger?
-            frame = np.hstack([frame, delay])
+            frame = np.hstack([delay, frame])
 
         return frame
 
@@ -366,6 +378,7 @@ if __name__ == '__main__':
     channels = {'488': {'name':'488', 'use': True, 'exposure': 100, 'power': 10},
                 '561': {'name':'561', 'use': True, 'exposure': 100, 'power':10}}
     settings = MMSettings(channels=channels, n_channels=2)
+    settings.slices = [109, 110, 111]
     event_thread = EventThread()
     event_thread.start()
 

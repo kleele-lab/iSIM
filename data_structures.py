@@ -37,6 +37,8 @@ class MMSettings:
     slices_start: float = None
     slices_end: float = None
     slices_step: float = None
+    slices: List[float] = None
+    use_slices: bool = False
 
     save_path: Path = None
     prefix: str = None
@@ -73,3 +75,11 @@ class MMSettings:
                                      'power': None}
             if self.channels[config]['use']:
                 self.n_channels += 1
+
+        self.use_slices = self.java_settings.use_slices()
+        self.java_slices = self.java_settings.slices()
+        self.slices = []
+        for slice_num in range(self.java_settings.slices().size()):
+            self.slices.append(self.java_slices.get(slice_num))
+        if len(self.slices) == 0:
+            self.slices = [0]

@@ -36,8 +36,8 @@ class EventThread(QObject):
             self.event_sockets.append(socket_provider._socket)
 
         # PUB/SUB
-        context = zmq.Context()
-        self.socket = context.socket(zmq.SUB)
+        self.context = zmq.Context()
+        self.socket = self.context.socket(zmq.SUB)
         self.socket.connect("tcp://localhost:5556")
         self.socket.setsockopt(zmq.RCVTIMEO, 1000)  # Timeout for the recv() function
 
@@ -95,7 +95,7 @@ class EventThread(QObject):
                 elif 'DefaultAcquisitionEndedEvent' in eventString:
                     self.acquisition_ended_event.emit(evt)
                     print('Acquisition Ended')
-                elif 'StagePositionChangedEvent' in eventString:
+                elif 'DefaultStagePositionChangedEvent' in eventString:
                     if self.blockZ > 0 or time.perf_counter() - self.last_stage_position < 0.05:
                         print("BLOCKED ", self.blockZ)
                     else:
@@ -103,8 +103,6 @@ class EventThread(QObject):
                     self.last_stage_position = time.perf_counter()
                     self.blockZ = False
                 elif 'XYStagePositionChangedEvent' in eventString:
-                    print(evt.get_x_pos())
-                    print(evt.get_y_pos())
                     self.xy_stage_position_changed_event.emit((evt.get_x_pos(), evt.get_y_pos()))
                 elif 'DefaultNewImageEvent' in eventString:
                     if self.blockImages:
@@ -141,6 +139,9 @@ class EventThread(QObject):
                 pass
         # Thread was stopped, let's also close the socket then
         self.socket.close()
+        for socket in self.event_sockets:
+            socket.close()
+        self.context.term()
 
 
 
