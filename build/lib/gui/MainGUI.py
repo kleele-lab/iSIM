@@ -16,7 +16,7 @@ class MainGUI(QtWidgets.QWidget):
 
     def __init__(self, parent=None, monogram:bool = True, event_thread = None):
         super(MainGUI, self).__init__(parent=parent)
-        # self.position_history = PositionHistory()
+        self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
         # self.live_view = LiveView()
         # self.alignment_widget = AlignmentWidget()
@@ -35,7 +35,7 @@ class MainGUI(QtWidgets.QWidget):
 
 
             self.mm_interface = MicroManagerControl.MicroManagerControl(event_thread=self.event_thread)
-            # self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
+            self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
             self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
         except TimeoutError as error:
             print(error)
@@ -51,7 +51,7 @@ class MainGUI(QtWidgets.QWidget):
             print(error)
 
         self.setLayout(QtWidgets.QHBoxLayout())
-        # self.layout().addWidget(self.position_history)
+        self.layout().addWidget(self.position_history)
         self.layout().addWidget(self.focus_slider)
         # self.layout().addWidget(self.live_view)
         # self.layout().addWidget(self.alignment_widget)
@@ -103,7 +103,7 @@ class MainGUI(QtWidgets.QWidget):
 
     @pyqtSlot(object)
     def handle_mda_settings(self, settings):
-        print(settings.root())
+        pass
 
     def closeEvent(self, event):
         try:
@@ -111,7 +111,8 @@ class MainGUI(QtWidgets.QWidget):
         except AttributeError:
             # Event Thread was not added in the first place
             pass
-        self.position_history.painter.end()
+        self.monogram.thread.quit()
+        self.mm_interface.close()
         event.accept()
 
 

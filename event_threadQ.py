@@ -4,7 +4,7 @@ import threading
 import re
 import zmq
 import json
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
 import time
 
 from isimgui.data_structures import PyImage, MMSettings
@@ -13,14 +13,7 @@ SOCKET = '5556'
 
 class EventThread(QObject):
     """ Thread that receives events from Micro-Manager and relays them to the main program"""
-    xy_stage_position_changed_event = pyqtSignal(tuple)
-    stage_position_changed_event = pyqtSignal(float)
-    acquisition_started_event = pyqtSignal(object)
-    acquisition_ended_event = pyqtSignal(object)
-    new_image_event = pyqtSignal(PyImage)
-    settings_event = pyqtSignal(str, str, str)
-    mda_settings_event = pyqtSignal(object)
-    live_mode_event = pyqtSignal(bool)
+
 
     def __init__(self):
         super().__init__()
@@ -41,12 +34,43 @@ class EventThread(QObject):
         self.socket.connect("tcp://localhost:5556")
         self.socket.setsockopt(zmq.RCVTIMEO, 1000)  # Timeout for the recv() function
 
-        self.thread_stop = threading.Event()
+        self.thread_stop = False
 
         self.topics = ["StandardEvent", "GUIRefreshEvent", "ImageEvent"]
         for topic in self.topics:
             self.socket.setsockopt_string(zmq.SUBSCRIBE, topic)
 
+        self.thread = QThread()
+        self.listener = EventListener(self.socket, self.event_sockets, self.bridge)
+        self.listener.moveToThread(self.thread)
+        self.thread.started.connect(self.listener.start)
+        self.thread.start()
+
+    def stop(self):
+        self.listener.stop()
+        print('Closing socket')
+        self.thread.exit()
+        self.socket.close()
+        for socket in self.event_sockets:
+            socket.close()
+        self.context.term()
+
+class EventListener(QObject):
+    xy_stage_position_changed_event = pyqtSignal(tuple)
+    stage_position_changed_event = pyqtSignal(float)
+    acquisition_started_event = pyqtSignal(object)
+    acquisition_ended_event = pyqtSignal(object)
+    new_image_event = pyqtSignal(PyImage)
+    settings_event = pyqtSignal(str, str, str)
+    mda_settings_event = pyqtSignal(object)
+    live_mode_event = pyqtSignal(bool)
+
+    def __init__(self, socket, event_sockets, bridge):
+        super().__init__()
+        self.loop_stop = False
+        self.socket = socket
+        self.event_sockets = event_sockets
+        self.bridge = bridge
         # Record times for events that we receive twice
         self.last_acq_started = time.perf_counter()
         self.last_custom_mda = time.perf_counter()
@@ -54,26 +78,17 @@ class EventThread(QObject):
         self.blockZ = False
         self.blockImages = False
 
-    def start(self, daemon=True):
-        self.thread = threading.Thread(target=self.main_thread, args=(self.thread_stop, ),
-                                       daemon=daemon)
-        self.thread.start()
-
-    def stop(self):
-        self.thread_stop.set()
-        print('Closing socket')
-        self.thread.join()
-
-    def main_thread(self, thread_stop):
+    pyqtSlot()
+    def start(self):
         instance = 0
-        while not thread_stop.wait(0):
+        while not self.loop_stop:
             instance = instance + 1 if instance < 100 else 0
             try:
                 #  Get the reply.
                 reply = str(self.socket.recv())
                 # topic = re.split(' ', reply)[0][2:]
                 message = json.loads(re.split(' ', reply)[1][0:-1])
-                socket_num = instance % self.num_sockets
+                socket_num = instance % len(self.event_sockets)
                 pre_evt = self.bridge._class_factory.create(message)
 
                 evt = pre_evt(
@@ -138,11 +153,11 @@ class EventThread(QObject):
             except zmq.error.Again:
                 pass
         # Thread was stopped, let's also close the socket then
-        self.socket.close()
-        for socket in self.event_sockets:
-            socket.close()
-        self.context.term()
 
+
+    pyqtSlot()
+    def stop(self):
+        self.loop_stop = True
 
 
 

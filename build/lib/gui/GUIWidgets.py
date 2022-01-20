@@ -116,7 +116,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
     dependent on if the laser light was on at the given time."""
     xy_stage_position_python = QtCore.pyqtSignal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent:QtWidgets.QWidget=None):
         super(PositionHistory, self).__init__(QtWidgets.QGraphicsScene(), parent=parent)
         # Set the properties for the window so that everything is shown and we don't have Scrollbars
         self.view_size = (1500, 1500)
@@ -136,7 +136,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         # Get the components of the GUI ready
         self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                 QtGui.QImage.Format.Format_RGB32)
-        self.painter = self.define_painter()
+
         self.pixmap = self.scene().addPixmap(QtGui.QPixmap.fromImage(self.map))
         self.now_rect = self.scene().addRect(QtCore.QRectF(0, 0,
                                                            self.fov_size[0], self.fov_size[1]),
@@ -157,6 +157,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.increase_values)
         self.timer.start(1_000)
+
 
     def stage_moved(self, new_pos):
         self.stage_pos = new_pos
@@ -223,12 +224,14 @@ class PositionHistory(QtWidgets.QGraphicsView):
         return arrow
 
     def increase_values(self):
+        self.painter = self.define_painter()
         if self.laser:
             color = QtGui.QColor(255, 255, 255)
             color.setAlpha(self.laser)
             self.painter.brush().setColor(color)
             self.painter.drawRect(self.rect)
             self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
+        self.painter.end()
 
     def define_painter(self, alpha=10):
         painter = QtGui.QPainter(self.map)
@@ -268,6 +271,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.setBaseSize(self.view_size[0], self.view_size[1])
         self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
                        QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+
 
 
 class LiveView(QtWidgets.QGraphicsView):
