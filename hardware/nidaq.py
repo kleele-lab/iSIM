@@ -1,8 +1,4 @@
-
-from lib2to3.pytree import convert
-from sqlite3 import DataError
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
-from MicroManagerControl import MicroManagerControl
 from data_structures import MMSettings
 import nidaqmx
 import nidaqmx.stream_writers
@@ -11,7 +7,7 @@ import copy
 
 
 import time
-from event_thread import EventThread
+from event_threadQ import EventThread
 from gui.GUIWidgets import SettingsView
 
 
@@ -23,6 +19,7 @@ class NIDAQ(QObject):
     def __init__(self, event_thread: EventThread, settings: MMSettings = MMSettings()):
         super().__init__()
         self.settings = settings
+        self.event_thread = event_thread
         self.system = nidaqmx.system.System.local()
 
         self.sampling_rate = 500
@@ -36,12 +33,12 @@ class NIDAQ(QObject):
         self.acq = Acquisition(self, settings)
         self.live = LiveMode(self)
 
-        self.event_thread = event_thread
         self.event_thread.live_mode_event.connect(self.start_live)
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
         self.event_thread.acquisition_ended_event.connect(self.acq_done)
         self.event_thread.mda_settings_event.connect(self.new_settings)
         self.event_thread.settings_event.connect(self.power_settings)
+        self.event_thread.settings_event.connect(self.live.channel_setting)
 
     def init_task(self):
         try: self.task.close()
@@ -72,13 +69,14 @@ class NIDAQ(QObject):
         print('NEW SETTINGS SET')
 
     @pyqtSlot(str, str, str)
-    def power_settings(self, device, property, value):
-        if device == "488_AOTF":
-            self.settings.channels['488']['power'] = float(value)/10
-            self.aotf.power_488 = float(value)/10
-        elif device == "561_AOTF":
-            self.settings.channels['561']['power'] = float(value)/10
-            self.aotf.power_561 = float(value)/10
+    def power_settings(self, device, prop, value):
+        if device == "488_AOTF" and prop == r"Power (% of max)":
+            self.aotf.power_488 = float(value)
+        elif device == "561_AOTF" and prop == r"Power (% of max)":
+            self.aotf.power_561 = float(value)
+
+        if device in ["561_AOTF", "488_AOTF"]:
+            self.live.make_daq_data()
         print(self.settings.channels)
 
     @pyqtSlot(object)
@@ -103,10 +101,9 @@ class NIDAQ(QObject):
         camera = self.camera.one_frame(self.settings)
 
         if not self.settings.use_channels or live_channel is not None:
-            channel_number = 0 if live_channel is None else live_channel
+            channel_name = '488' if live_channel is None else live_channel
             stage = self.stage.one_frame(self.settings, 0)
-            aotf = self.aotf.one_frame(self.settings,
-                                       list(self.settings.channels.values())[channel_number])
+            aotf = self.aotf.one_frame(self.settings, self.settings.channels[channel_name])
             timepoint = np.vstack((galvo, stage, camera, aotf))
         else:
             z_iter = 0
@@ -136,8 +133,16 @@ class LiveMode(QObject):
     def __init__(self, ni:NIDAQ):
         super().__init__()
         self.ni = ni
+        core = self.ni.event_thread.bridge.get_core()
+        self.channel_name= core.get_property('DPseudoChannel',"Label")
         self.make_daq_data()
         self.stop = False
+
+    @pyqtSlot(str, str, str)
+    def channel_setting(self, device, prop, value):
+        if device == "DPseudoChannel" and prop == "Label":
+            self.channel_name = value
+            self.make_daq_data()
 
     def update_settings(self, new_settings):
         self.ni.init_task()
@@ -156,7 +161,6 @@ class LiveMode(QObject):
             self.stop = False
             print("STOP")
             self.ni.stream.write_many_sample(self.stop_data)
-            print("STOPPING")
             self.ni.task.stop()
             self.ni.task.close()
         else:
@@ -164,8 +168,8 @@ class LiveMode(QObject):
         return 0
 
     def make_daq_data(self):
-        timepoint = self.ni.generate_one_timepoint(0)
-        no_frames = np.max([1, round(200/self.ni.cycle_time)])
+        timepoint = self.ni.generate_one_timepoint(self.channel_name)
+        no_frames = np.max([1, round(400/self.ni.cycle_time)])
         self.daq_data = np.tile(timepoint, no_frames)
         stop_data = np.asarray(
                 [[self.ni.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
@@ -281,7 +285,6 @@ class Galvo:
 
 
 class Stage:
-    #TODO: This was copied from the Camera, make adjustments for the stage!
     def __init__(self, ni: NIDAQ):
         self.ni = ni
         self.pulse_voltage = 5
@@ -337,21 +340,21 @@ class AOTF:
     def __init__(self, ni:NIDAQ):
         self.ni = ni
         self.blank_voltage = 10
-        self.power_488 = 10
-        self.power_561 = 10
+        core = self.ni.event_thread.bridge.get_core()
+        self.power_488 = float(core.get_property('488_AOTF',r"Power (% of max)"))
+        self.power_561 = float(core.get_property('561_AOTF',r"Power (% of max)"))
+
 
     def one_frame(self, settings:MMSettings, channel:dict):
         blank = make_pulse(self.ni, 0, self.blank_voltage, 0)
         if channel['name'] == '488':
-            try: power = channel['power']/10
-            except: power = self.power_488
-            aotf_488 = make_pulse(self.ni, 0, power, 0)
+            aotf_488 = make_pulse(self.ni, 0, self.power_488/10, 0)
             aotf_561 = make_pulse(self.ni, 0, 0, 0)
+            print("AOTF POWER", self.power_488)
         elif channel['name'] == '561':
-            try: power = channel['power']/10
-            except: power = self.power_561
             aotf_488 = make_pulse(self.ni, 0, 0, 0)
-            aotf_561 = make_pulse(self.ni, 0, power, 0)
+            aotf_561 = make_pulse(self.ni, 0, self.power_561/10, 0)
+            print("AOTF POWER", self.power_561)
         aotf = np.vstack((blank, aotf_488, aotf_561))
         aotf = self.add_delays(aotf, settings)
         return aotf
@@ -368,15 +371,13 @@ class AOTF:
         return frame
 
 
-
-
 if __name__ == '__main__':
     import sys
     from PyQt5 import QtWidgets
     app = QtWidgets.QApplication(sys.argv)
 
-    channels = {'488': {'name':'488', 'use': True, 'exposure': 100, 'power': 10},
-                '561': {'name':'561', 'use': True, 'exposure': 100, 'power':10}}
+    channels = {'488': {'name':'488', 'use': True, 'exposure': 100, },
+                '561': {'name':'561', 'use': True, 'exposure': 100, }}
     settings = MMSettings(channels=channels, n_channels=2)
     settings.slices = [109, 110, 111]
     event_thread = EventThread()

@@ -1,7 +1,7 @@
 import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer
 from gui.GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean
-from event_thread import EventThread
+from event_threadQ import EventThread
 from MonogramCC import MonogramCC
 from PyQt5 import QtWidgets, QtCore
 import sys
