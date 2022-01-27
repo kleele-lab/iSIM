@@ -1,25 +1,34 @@
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from MicroManagerControl import MicroManagerControl
 from data_structures import MMSettings
 import nidaqmx
 import nidaqmx.stream_writers
 import numpy as np
 import copy
 
-
 import time
 from event_threadQ import EventThread
 from gui.GUIWidgets import SettingsView
+from hardware.FilterFlipper import Flippers
 
 
 class NIDAQ(QObject):
 
     new_ni_settings = pyqtSignal(MMSettings)
-    set_start_z_position = pyqtSignal(float)
 
-    def __init__(self, event_thread: EventThread, settings: MMSettings = MMSettings()):
+    def __init__(self, event_thread: EventThread, mm_interface: MicroManagerControl):
         super().__init__()
-        self.settings = settings
         self.event_thread = event_thread
+        self.core = self.event_thread.bridge.get_core()
+        self.mm_interface = mm_interface
+
+        #Get the EDA setting to only do things when EDA is off, otherwise the daq_actuator is active
+        eda = self.core.get_property('EDA', "Label")
+        self.eda = False if eda == "Off" else True
+
+        settings = self.event_thread.bridge.get_studio().acquisitions().get_acquisition_settings()
+        self.settings = MMSettings(settings)
+
         self.system = nidaqmx.system.System.local()
 
         self.sampling_rate = 500
@@ -29,9 +38,12 @@ class NIDAQ(QObject):
         self.stage = Stage(self)
         self.camera = Camera(self)
         self.aotf = AOTF(self)
+        self.brightfield_control = Brightfield(self)
 
-        self.acq = Acquisition(self, settings)
+        self.acq = Acquisition(self, self.settings)
         self.live = LiveMode(self)
+
+        self.acq.set_z_position.connect(self.mm_interface.set_z_position)
 
         self.event_thread.live_mode_event.connect(self.start_live)
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
@@ -59,6 +71,7 @@ class NIDAQ(QObject):
         self.n_points = self.sampling_rate*self.sweeps_per_frame
         #settings for all pulses:
         self.duty_cycle = 10/self.n_points
+        self.settings = new_settings
         print('NI settings set')
 
     @pyqtSlot(MMSettings)
@@ -74,25 +87,44 @@ class NIDAQ(QObject):
             self.aotf.power_488 = float(value)
         elif device == "561_AOTF" and prop == r"Power (% of max)":
             self.aotf.power_561 = float(value)
+        elif device == "exposure":
+            self.settings.channels['488']['exposure'] = float(value)
+            self.update_settings(self.settings)
+        elif device == 'PrimeB_Camera' and prop == "TriggerMode":
+            print(value)
+            brightfield = True if value == "Internal Trigger" else False
+            self.brightfield_control.toggle_flippers(brightfield)
 
-        if device in ["561_AOTF", "488_AOTF"]:
+        elif device == "EDA" and prop == "Label":
+            eda = self.core.get_property('EDA', "Label")
+            self.eda = False if eda == "Off" else True
+
+        if device in ["561_AOTF", "488_AOTF", 'exposure']:
             self.live.make_daq_data()
-        print(self.settings.channels)
 
     @pyqtSlot(object)
     def run_acquisition_task(self, _):
-        self.event_thread.mda_settings_event.disconnect(self.new_settings)
-        print('Received ACQ STARTED EVT')
-        time.sleep(0.5)
-        self.acq.run_acquisition()
+        if not self.eda:
+            self.event_thread.mda_settings_event.disconnect(self.new_settings)
+            time.sleep(0.5)
+            self.acq.run_acquisition()
 
     @pyqtSlot(object)
     def acq_done(self, _):
+        self.acq.set_z_position.emit(self.acq.orig_z_position)
         self.event_thread.mda_settings_event.connect(self.new_settings)
         time.sleep(1)
         self.task.stop()
 
+    @pyqtSlot(bool)
+    def start_live(self, live_is_on):
+        self.live.toggle(live_is_on)
+
     def generate_one_timepoint(self, live_channel: int = None):
+        if live_channel == "LED":
+            timepoint = np.ndarray((6,1))
+            return timepoint
+
         iter_slices = copy.deepcopy(self.settings.slices)
         iter_slices_rev = copy.deepcopy(iter_slices)
         iter_slices_rev.reverse()
@@ -124,25 +156,26 @@ class NIDAQ(QObject):
             timepoint = np.hstack(channels_data)
         return timepoint
 
-    def start_live(self, live_is_on):
-        self.live.toggle(live_is_on)
-
-
 
 class LiveMode(QObject):
     def __init__(self, ni:NIDAQ):
         super().__init__()
         self.ni = ni
         core = self.ni.event_thread.bridge.get_core()
-        self.channel_name= core.get_property('DPseudoChannel',"Label")
+        self.channel_name= core.get_property('DPseudoChannel', "Label")
         self.make_daq_data()
         self.stop = False
+        self.brightfield = core.get_property('PrimeB_Camera', "TriggerMode")
+        self.brightfield = (self.brightfield == "Internal Trigger")
+        self.ni.brightfield_control.flippers.brightfield(self.brightfield)
 
     @pyqtSlot(str, str, str)
     def channel_setting(self, device, prop, value):
         if device == "DPseudoChannel" and prop == "Label":
             self.channel_name = value
             self.make_daq_data()
+        if device == "PrimeB_Camera" and prop == "TriggerMode":
+            self.brightfield = (value == "Internal Trigger")
 
     def update_settings(self, new_settings):
         self.ni.init_task()
@@ -153,30 +186,36 @@ class LiveMode(QObject):
         self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
                                                                          auto_start=False)
         self.ni.stream.write_many_sample(self.daq_data)
-        self.ni.task.register_every_n_samples_transferred_from_buffer_event(2, self.get_new_data)
+        self.ni.task.register_every_n_samples_transferred_from_buffer_event(2,
+                                                                            self.get_new_data)
 
     def get_new_data(self, task_handle, every_n_samples_event_type, number_of_samples, callback_data):
-        print('NEW DATA', time.perf_counter())
         if self.stop:
-            self.stop = False
-            print("STOP")
-            self.ni.stream.write_many_sample(self.stop_data)
             self.ni.task.stop()
-            self.ni.task.close()
+            self.send_stop_data()
         else:
             self.ni.stream.write_many_sample(self.daq_data)
         return 0
 
     def make_daq_data(self):
         timepoint = self.ni.generate_one_timepoint(self.channel_name)
-        no_frames = np.max([1, round(400/self.ni.cycle_time)])
+        no_frames = np.max([1, round(200/self.ni.cycle_time)])
+        print("N Frames ", no_frames)
         self.daq_data = np.tile(timepoint, no_frames)
-        stop_data = np.asarray(
+        self.stop_data = np.asarray(
                 [[self.ni.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
-        self.stop_data = np.tile(stop_data, self.daq_data.shape[1])
         print(self.daq_data.shape[1])
 
+    def send_stop_data(self):
+        self.ni.init_task()
+        self.ni.task.write(self.stop_data)
+
     def toggle(self, live_is_on):
+
+        if self.brightfield:
+            self.ni.brightfield_control.led(live_is_on, 0.3)
+            return
+
         if live_is_on:
             self.stop = False
             self.update_settings(self.ni.settings)
@@ -187,12 +226,11 @@ class LiveMode(QObject):
 
 
 class Acquisition(QObject):
-    set_start_z_position = pyqtSignal(float)
+    set_z_position = pyqtSignal(float)
     def __init__(self, ni:NIDAQ, settings: MMSettings):
         super().__init__()
         self.settings = settings
         self.ni = ni
-        self.set_start_z_position.connect(self.ni.set_start_z_position)
         self.daq_data = None
         self.ready = True
         self.make_daq_data()
@@ -212,7 +250,6 @@ class Acquisition(QObject):
 
     def make_daq_data(self):
         timepoint = self.ni.generate_one_timepoint()
-        # print('timepoint_shape ', timepoint.shape)
         timepoint = self.add_interval(timepoint)
         self.daq_data = np.tile(timepoint, self.settings.timepoints)
 
@@ -233,9 +270,9 @@ class Acquisition(QObject):
 
     def run_acquisition(self):
         self.update_settings(self.settings)
+        self.orig_z_position = self.ni.core.get_position()
         if self.settings.use_slices:
-            print("SET STARTING POSITION")
-            self.set_start_z_position.emit(self.settings.slices[0])
+            self.set_z_position.emit(self.settings.slices[0])
             time.sleep(0.1)
         print("WRITING, ", self.daq_data.shape)
         written = self.ni.stream.write_many_sample(self.daq_data, timeout=20)
@@ -256,7 +293,6 @@ class Galvo:
         self.offset_0= -0.15
         self.amp_0 = 0.75
         self.parking_voltage = -3
-        # self.ni.new_ni_settings.connect(self.register_settings)
 
     def one_frame(self, settings):
         self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
@@ -344,17 +380,14 @@ class AOTF:
         self.power_488 = float(core.get_property('488_AOTF',r"Power (% of max)"))
         self.power_561 = float(core.get_property('561_AOTF',r"Power (% of max)"))
 
-
     def one_frame(self, settings:MMSettings, channel:dict):
         blank = make_pulse(self.ni, 0, self.blank_voltage, 0)
         if channel['name'] == '488':
             aotf_488 = make_pulse(self.ni, 0, self.power_488/10, 0)
             aotf_561 = make_pulse(self.ni, 0, 0, 0)
-            print("AOTF POWER", self.power_488)
         elif channel['name'] == '561':
             aotf_488 = make_pulse(self.ni, 0, 0, 0)
             aotf_561 = make_pulse(self.ni, 0, self.power_561/10, 0)
-            print("AOTF POWER", self.power_561)
         aotf = np.vstack((blank, aotf_488, aotf_561))
         aotf = self.add_delays(aotf, settings)
         return aotf
@@ -371,19 +404,40 @@ class AOTF:
         return frame
 
 
+class Brightfield:
+    def __init__(self, ni:NIDAQ):
+        self.flippers = Flippers()
+        self.led_on = False
+        self.flippers_up = False
+        self.ni = ni
+        self.led(False)
+        self.flippers.brightfield(False)
+
+    def toggle_led(self):
+        self.led(not self.led_on)
+        self.led_on = not self.led_on
+
+    def toggle_flippers(self, up:bool = None):
+        up = not self.flippers_up if up is None else up
+        self.flippers.brightfield(up)
+        self.flippers_up = up
+
+    def led(self, on:bool = True, power: float = 1.):
+        self.led_on = on
+        power = power if on else 0
+        with nidaqmx.Task() as task:
+            task.ao_channels.add_ao_voltage_chan("Dev1/ao6")
+            task.write(power, auto_start=True)
+
 if __name__ == '__main__':
     import sys
     from PyQt5 import QtWidgets
     app = QtWidgets.QApplication(sys.argv)
 
-    channels = {'488': {'name':'488', 'use': True, 'exposure': 100, },
-                '561': {'name':'561', 'use': True, 'exposure': 100, }}
-    settings = MMSettings(channels=channels, n_channels=2)
-    settings.slices = [109, 110, 111]
     event_thread = EventThread()
     event_thread.start()
 
-    ni = NIDAQ(event_thread, settings)
+    ni = NIDAQ(event_thread)
 
     settings_view = SettingsView(event_thread)
     settings_view.show()

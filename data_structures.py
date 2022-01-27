@@ -9,6 +9,7 @@ class PyImage:
     raw_image: np.ndarray
     timepoint: int
     channel: int
+    z_slice: int
     time: int
 
 

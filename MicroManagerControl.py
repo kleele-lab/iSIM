@@ -20,6 +20,7 @@ class MicroManagerControl(QObject):
         self.studio = self.bridge.get_studio()
         self.data = self.studio.data
         self.core = self.bridge.get_core()
+        self.live = self.studio.get_snap_live_manager()
         self.image_format = QImage.Format.Format_Grayscale16
         self.LUT = []
         self.zPosition = self.core.get_position()
@@ -40,8 +41,12 @@ class MicroManagerControl(QObject):
     @pyqtSlot(float)
     def set_z_position(self, pos: float):
         self.event_thread.blockZ = True
-        print("Sending pos to MM", pos)
+        print("set stage to ", pos)
         self.core.set_position(pos)
+
+    @pyqtSlot()
+    def stop_live(self):
+        self.live.set_live_mode_on(False)
 
     def set_bit_depth(self):
         bit_depth = self.core.get_image_bit_depth

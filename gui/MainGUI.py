@@ -1,5 +1,6 @@
 import MicroManagerControl
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer
+from PyQt5.QtCore import pyqtSlot
+from .qt_classes import QWidgetRestore
 from gui.GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean
 from event_threadQ import EventThread
 from MonogramCC import MonogramCC
@@ -11,11 +12,11 @@ import numpy as np
 # Adjust for different screen sizes
 QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-class MainGUI(QtWidgets.QWidget):
+class MainGUI(QWidgetRestore):
     """ Makes a mini App that shows of the capabilities of the Widgets implemented here """
 
     def __init__(self, parent=None, monogram:bool = True, event_thread = None):
-        super(MainGUI, self).__init__(parent=parent)
+        super(MainGUI, self).__init__()
         self.position_history = PositionHistory()
         self.focus_slider = FocusSlider()
         # self.live_view = LiveView()
@@ -33,6 +34,8 @@ class MainGUI(QtWidgets.QWidget):
             self.event_thread.settings_event.connect(self.handle_settings)
             self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
+            # Init the focus slider position
+            self.focus_slider.setValue(self.event_thread.bridge.get_core().get_position()*100)
 
             self.mm_interface = MicroManagerControl.MicroManagerControl(event_thread=self.event_thread)
             self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
@@ -46,6 +49,7 @@ class MainGUI(QtWidgets.QWidget):
             if monogram:
                 self.monogram = MonogramCC()
                 self.focus_slider.connect_monogram(self.monogram)
+                self.monogram.monogram_stop_live_event.connect(self.mm_interface.stop_live)
 
         except OSError as error:
             print(error)
@@ -113,6 +117,7 @@ class MainGUI(QtWidgets.QWidget):
             pass
         self.monogram.thread.quit()
         self.mm_interface.close()
+        super().closeEvent(event)
         event.accept()
 
 

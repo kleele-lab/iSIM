@@ -14,6 +14,7 @@ CUTOFF_SPEED = 200
 class MonogramCC(QObject):
 
     monogram_stage_position_event = pyqtSignal(float)
+    monogram_stop_live_event = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -24,6 +25,7 @@ class MonogramCC(QObject):
         self.worker = self.Listener(self.device, self)
         self.worker.moveToThread(self.thread)
         self.worker.monogram_stage_position_event.connect(self.monogram_stage_position_event)
+        self.worker.monogram_stop_live_event.connect(self.monogram_stop_live_event)
 
         self.thread.started.connect(self.worker.startListen)
         self.thread.start()
@@ -42,6 +44,7 @@ class MonogramCC(QObject):
 
     class Listener(QObject):
         monogram_stage_position_event = pyqtSignal(float)
+        monogram_stop_live_event = pyqtSignal()
 
         def __init__(self, device, parent):
             super().__init__()
@@ -68,6 +71,9 @@ class MonogramCC(QObject):
                         done = True
                     if event.button == 1:
                         self.resetPos()
+                    if event.button == 2:
+                        "BUTTON stop live"
+                        self.monogram_stop_live_event.emit()
 
         def resetPos(self):
             self.ZPosition = 0

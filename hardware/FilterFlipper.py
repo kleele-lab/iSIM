@@ -1,3 +1,4 @@
+from logging import Filter
 import clr
 import time
 import ctypes
@@ -66,6 +67,23 @@ class FilterFlipper(object):
             self._upPos = 1
             self._downPos = 2
             print('I dont know the Up/Down Position for this Flipper')
+
+
+class Flippers():
+    def __init__(self):
+        DeviceManagerCLI.DeviceManagerCLI.BuildDeviceList()
+        availableDevices = DeviceManagerCLI.DeviceManagerCLI.GetDeviceList()
+        self.flippers = [FilterFlipper() for i in range(len(availableDevices))]
+        for idx, flipper in enumerate(self.flippers):
+            flipper.connect(idx)
+
+    def brightfield(self, on:bool = True):
+        for flipper in self.flippers:
+            if on:
+                print("MOVE flipper up")
+                flipper.moveUp()
+            else:
+                flipper.moveDown()
 
 
 def brightfield(on:bool = True):

@@ -43,7 +43,6 @@ class FocusSlider(QtWidgets.QSlider):
     def slider_moved(self, e):
         self.my_event = True
 
-
     def connect_monogram(self, monogram):
         self.monogram = monogram
         self.monogram.monogram_stage_position_event.connect(self.monogram_event)

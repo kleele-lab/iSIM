@@ -41,15 +41,18 @@ class EventThread(QObject):
             self.socket.setsockopt_string(zmq.SUBSCRIBE, topic)
 
         self.thread = QThread()
-        self.listener = EventListener(self.socket, self.event_sockets, self.bridge)
+        self.listener = EventListener(self.socket, self.event_sockets, self.bridge, self.thread)
         self.listener.moveToThread(self.thread)
         self.thread.started.connect(self.listener.start)
+        self.listener.stop_thread_event.connect(self.stop)
         self.thread.start()
 
     def stop(self):
-        self.listener.stop()
-        print('Closing socket')
         self.thread.exit()
+        while self.thread.isRunning():
+            time.sleep(0.05)
+
+        print('Closing socket')
         self.socket.close()
         for socket in self.event_sockets:
             socket.close()
@@ -64,13 +67,15 @@ class EventListener(QObject):
     settings_event = pyqtSignal(str, str, str)
     mda_settings_event = pyqtSignal(object)
     live_mode_event = pyqtSignal(bool)
+    stop_thread_event = pyqtSignal()
 
-    def __init__(self, socket, event_sockets, bridge):
+    def __init__(self, socket, event_sockets, bridge: Bridge, thread: QThread):
         super().__init__()
         self.loop_stop = False
         self.socket = socket
         self.event_sockets = event_sockets
         self.bridge = bridge
+        self.thread = thread
         # Record times for events that we receive twice
         self.last_acq_started = time.perf_counter()
         self.last_custom_mda = time.perf_counter()
@@ -87,6 +92,7 @@ class EventListener(QObject):
                 #  Get the reply.
                 reply = str(self.socket.recv())
                 # topic = re.split(' ', reply)[0][2:]
+
                 message = json.loads(re.split(' ', reply)[1][0:-1])
                 socket_num = instance % len(self.event_sockets)
                 pre_evt = self.bridge._class_factory.create(message)
@@ -127,6 +133,7 @@ class EventListener(QObject):
                                                                        image.get_height()]),
                                        image.get_coords().get_t(),
                                        image.get_coords().get_c(),
+                                       image.get_coords().get_z(),
                                        image.get_metadata().get_elapsed_time_ms())
                                     #  0) # no elapsed time
                     self.new_image_event.emit(py_image)
@@ -144,7 +151,7 @@ class EventListener(QObject):
                 elif "DefaultLiveModeEvent" in eventString:
                     self.blockImages = evt.get_is_on()
                     self.live_mode_event.emit(self.blockImages)
-                    print("Blocking images in live: ", self.blockImages)
+                    # print("Blocking images in live: ", self.blockImages)
 
 
 
@@ -154,21 +161,23 @@ class EventListener(QObject):
                 pass
         # Thread was stopped, let's also close the socket then
 
-
     pyqtSlot()
     def stop(self):
         self.loop_stop = True
+        self.stop_thread_event.emit()
+        while self.thread.isRunning():
+            time.sleep(0.05)
+
 
 
 
 def main():
     thread = EventThread()
-    thread.start(daemon=True)
     while True:
         try:
             time.sleep(0.01)
         except KeyboardInterrupt:
-            thread.stop()
+            thread.listener.stop()
             print('Stopping')
             break
 
