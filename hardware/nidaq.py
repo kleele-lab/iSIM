@@ -43,14 +43,18 @@ class NIDAQ(QObject):
         self.acq = Acquisition(self, self.settings)
         self.live = LiveMode(self)
 
+        self.task = None
+
         self.acq.set_z_position.connect(self.mm_interface.set_z_position)
 
         self.event_thread.live_mode_event.connect(self.start_live)
+        self.event_thread.settings_event.connect(self.power_settings)
+        self.event_thread.settings_event.connect(self.live.channel_setting)
+
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
         self.event_thread.acquisition_ended_event.connect(self.acq_done)
         self.event_thread.mda_settings_event.connect(self.new_settings)
-        self.event_thread.settings_event.connect(self.power_settings)
-        self.event_thread.settings_event.connect(self.live.channel_setting)
+
 
     def init_task(self):
         try: self.task.close()
@@ -64,7 +68,11 @@ class NIDAQ(QObject):
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao5') # aotf 561 channel
 
     def update_settings(self, new_settings):
-        self.cycle_time = new_settings.channels['488']['exposure']
+        try:
+            self.cycle_time = new_settings.channels['488']['exposure']
+        except KeyError:
+            self.cycle_time = 100
+
         self.sweeps_per_frame = new_settings.sweeps_per_frame
         self.frame_rate = 1/(self.cycle_time*self.sweeps_per_frame/1000)
         self.smpl_rate = round(self.sampling_rate*self.frame_rate*self.sweeps_per_frame*self.sweeps_per_frame)
@@ -79,6 +87,7 @@ class NIDAQ(QObject):
         self.settings = new_settings
         self.update_settings(new_settings)
         self.acq.update_settings(new_settings)
+        self.live.update_settings(new_settings)
         print('NEW SETTINGS SET')
 
     @pyqtSlot(str, str, str)
@@ -94,13 +103,27 @@ class NIDAQ(QObject):
             print(value)
             brightfield = True if value == "Internal Trigger" else False
             self.brightfield_control.toggle_flippers(brightfield)
-
         elif device == "EDA" and prop == "Label":
             eda = self.core.get_property('EDA', "Label")
             self.eda = False if eda == "Off" else True
+            # Close the task if EDA is going to take over
+            if self.eda:
+                try:
+                    self.task.close()
+                except AttributeError:
+                    print("No task defined yet.")
+                self.event_thread.acquisition_started_event.disconnect(self.run_acquisition_task)
+                self.event_thread.acquisition_ended_event.disconnect(self.acq_done)
+                self.event_thread.mda_settings_event.disconnect(self.new_settings)
+            else:
+                self.update_settings(self.settings)
+                self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
+                self.event_thread.acquisition_ended_event.connect(self.acq_done)
+                self.event_thread.mda_settings_event.connect(self.new_settings)
 
         if device in ["561_AOTF", "488_AOTF", 'exposure']:
             self.live.make_daq_data()
+
 
     @pyqtSlot(object)
     def run_acquisition_task(self, _):
@@ -111,51 +134,86 @@ class NIDAQ(QObject):
 
     @pyqtSlot(object)
     def acq_done(self, _):
+        self.event_thread.mda_settings_event.connect(self.new_settings)
         self.acq.set_z_position.emit(self.acq.orig_z_position)
         self.event_thread.mda_settings_event.connect(self.new_settings)
         time.sleep(1)
-        self.task.stop()
+        self.init_task()
+        stop_data = np.asarray([[self.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
+        self.task.write(stop_data)
 
     @pyqtSlot(bool)
     def start_live(self, live_is_on):
         self.live.toggle(live_is_on)
 
-    def generate_one_timepoint(self, live_channel: int = None):
+    def generate_one_timepoint(self, live_channel: int = None, z_inverse: bool = False):
         if live_channel == "LED":
             timepoint = np.ndarray((6,1))
             return timepoint
-
-        iter_slices = copy.deepcopy(self.settings.slices)
-        iter_slices_rev = copy.deepcopy(iter_slices)
-        iter_slices_rev.reverse()
-
-        galvo = self.galvo.one_frame(self.settings)
-        camera = self.camera.one_frame(self.settings)
+        print("one timepoint post_delay", self.settings.post_delay)
 
         if not self.settings.use_channels or live_channel is not None:
+            old_post_delay = self.settings.post_delay
+            self.settings.post_delay = 0.03
+            galvo = self.galvo.one_frame(self.settings)
+            camera = self.camera.one_frame(self.settings)
             channel_name = '488' if live_channel is None else live_channel
             stage = self.stage.one_frame(self.settings, 0)
             aotf = self.aotf.one_frame(self.settings, self.settings.channels[channel_name])
             timepoint = np.vstack((galvo, stage, camera, aotf))
+            self.settings.post_delay = old_post_delay
         else:
-            z_iter = 0
+            galvo = self.galvo.one_frame(self.settings)
+            camera = self.camera.one_frame(self.settings)
+            if self.settings.acq_order_mode == 1:
+                timepoint = self.slices_then_channels(galvo, camera)
+            elif self.settings.acq_order_mode == 0:
+                timepoint = self.channels_then_slices(galvo, camera, z_inverse)
+        return timepoint
+
+    def get_slices(self):
+        iter_slices = copy.deepcopy(self.settings.slices)
+        iter_slices_rev = copy.deepcopy(iter_slices)
+        iter_slices_rev.reverse()
+        return iter_slices, iter_slices_rev
+
+    def channels_then_slices(self, galvo, camera, z_inverse):
+        iter_slices, iter_slices_rev = self.get_slices()
+
+        slices_data = []
+        slices = iter_slices if not z_inverse else iter_slices_rev
+        for sli in slices:
             channels_data = []
             for channel in self.settings.channels.values():
                 if channel['use']:
-                    slices_data = []
-                    slices = iter_slices if not np.mod(z_iter, 2) else iter_slices_rev
-                    for sli in slices:
-                        aotf = self.aotf.one_frame(self.settings, channel)
-                        offset = sli - self.settings.slices[0]
-                        stage = self.stage.one_frame(self.settings, offset)
-                        data = np.vstack((galvo, stage, camera, aotf))
-                        slices_data.append(data)
-                    z_iter += 1
-                    data = np.hstack(slices_data)
+                    aotf = self.aotf.one_frame(self.settings, channel)
+                    offset = sli - self.settings.slices[0]
+                    print(offset)
+                    stage = self.stage.one_frame(self.settings, offset)
+                    data = np.vstack((galvo, stage, camera, aotf))
                     channels_data.append(data)
-            timepoint = np.hstack(channels_data)
-        return timepoint
+            data = np.hstack(channels_data)
+            slices_data.append(data)
+        return np.hstack(slices_data)
 
+    def slices_then_channels(self, galvo, camera):
+        iter_slices, iter_slices_rev = self.get_slices()
+        z_iter = 0
+        channels_data = []
+        for channel in self.settings.channels.values():
+            if channel['use']:
+                slices_data = []
+                slices = iter_slices if not np.mod(z_iter, 2) else iter_slices_rev
+                for sli in slices:
+                    aotf = self.aotf.one_frame(self.settings, channel)
+                    offset = sli - self.settings.slices[0]
+                    stage = self.stage.one_frame(self.settings, offset)
+                    data = np.vstack((galvo, stage, camera, aotf))
+                    slices_data.append(data)
+                z_iter += 1
+                data = np.hstack(slices_data)
+                channels_data.append(data)
+        return np.hstack(channels_data)
 
 class LiveMode(QObject):
     def __init__(self, ni:NIDAQ):
@@ -186,7 +244,7 @@ class LiveMode(QObject):
         self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
                                                                          auto_start=False)
         self.ni.stream.write_many_sample(self.daq_data)
-        self.ni.task.register_every_n_samples_transferred_from_buffer_event(2,
+        self.ni.task.register_every_n_samples_transferred_from_buffer_event(self.daq_data.shape[1],
                                                                             self.get_new_data)
 
     def get_new_data(self, task_handle, every_n_samples_event_type, number_of_samples, callback_data):
@@ -198,7 +256,7 @@ class LiveMode(QObject):
         return 0
 
     def make_daq_data(self):
-        timepoint = self.ni.generate_one_timepoint(self.channel_name)
+        timepoint = self.ni.generate_one_timepoint(live_channel = self.channel_name)
         no_frames = np.max([1, round(200/self.ni.cycle_time)])
         print("N Frames ", no_frames)
         self.daq_data = np.tile(timepoint, no_frames)
@@ -251,7 +309,16 @@ class Acquisition(QObject):
     def make_daq_data(self):
         timepoint = self.ni.generate_one_timepoint()
         timepoint = self.add_interval(timepoint)
-        self.daq_data = np.tile(timepoint, self.settings.timepoints)
+        # Make zstage go up/down over two timepoints
+        if self.settings.acq_order_mode == 0:
+            timepoint_inverse = self.ni.generate_one_timepoint(z_inverse=True)
+            timepoint_inverse = self.add_interval(timepoint_inverse)
+            double_timepoint = np.hstack([timepoint, timepoint_inverse])
+            self.daq_data = np.tile(double_timepoint, int(np.floor(self.settings.timepoints/2)))
+            if self.settings.timepoints % 2 == 1:
+                self.daq_data = np.hstack([self.daq_data, timepoint])
+        else:
+            self.daq_data = np.tile(timepoint, self.settings.timepoints)
 
     def add_interval(self, timepoint):
         if (self.ni.smpl_rate*self.settings.interval_ms/1000 <= timepoint.shape[1] and
@@ -276,6 +343,7 @@ class Acquisition(QObject):
             time.sleep(0.1)
         print("WRITING, ", self.daq_data.shape)
         written = self.ni.stream.write_many_sample(self.daq_data, timeout=20)
+        time.sleep(0.5)
         self.ni.task.start()
         print('================== Data written        ', written)
 
@@ -337,12 +405,12 @@ class Stage:
         return (z_um/self.calibration) * self.max_v
 
     def add_delays(self, frame, settings):
-        delay = np.ones(round(self.ni.smpl_rate * settings.post_delay))
-        delay = delay * frame[-1]
         if settings.post_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.post_delay))* frame[-1]
             frame = np.hstack([frame, delay])
 
         if settings.pre_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.pre_delay))* frame[-1]
             frame = np.hstack([delay, frame])
 
         return frame

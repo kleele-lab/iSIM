@@ -30,8 +30,11 @@ class MMSettings:
     pre_delay: float = 0.0
     post_delay: float = 0.03
 
+    acq_order_mode: int = 0
+
     java_channels: Any = None
-    use_channels = True
+    channel_group: str = None
+    use_channels: bool = True
     channels: List[MMChannel] = None
     n_channels: int = 0
 
@@ -58,6 +61,12 @@ class MMSettings:
             self.java_channels = self.java_settings.channels()
             self.acq_order = self.java_settings.acq_order_mode()
             self.use_channels = self.java_settings.use_channels()
+            self.channel_group = self.java_settings.channel_group()
+            if all([self.channel_group.lower() == "emission filter",
+                    self.use_channels]):
+                self.post_delay = 0.5
+            self.acq_order_mode= self.java_settings.acq_order_mode()
+
 
         try:
             self.java_channels.size()

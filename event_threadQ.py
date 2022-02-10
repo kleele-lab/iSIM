@@ -7,7 +7,7 @@ import json
 from PyQt5.QtCore import QObject, pyqtSignal, QThread, pyqtSlot
 import time
 
-from isimgui.data_structures import PyImage, MMSettings
+from data_structures import PyImage, MMSettings
 
 SOCKET = "5556"
 
@@ -49,7 +49,7 @@ class EventThread(QObject):
         self.thread.start()
 
     def stop(self):
-        self.listener.stop()
+
         print("Closing socket")
         self.thread.exit()
         while self.thread.isRunning():
@@ -155,6 +155,7 @@ class EventListener(QObject):
                         # print(dir(settings))
                         settings = MMSettings(java_settings=settings)
                         self.mda_settings_event.emit(settings)
+                        print("post_delay ", settings.post_delay)
                     else:
                         print("SKIPPED")
                     self.last_custom_mda = time.perf_counter()

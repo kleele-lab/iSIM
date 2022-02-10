@@ -66,13 +66,14 @@ class MonogramCC(QObject):
                 if event.type == 1536:  # AxisMotion
                     self.updatePos(event.value)
                 if event.type == 1540:  # ButtonUp
+                    print(event.button)
                     if event.button == 0:
                         pygame.quit()
                         done = True
                     if event.button == 1:
                         self.resetPos()
                     if event.button == 2:
-                        "BUTTON stop live"
+                        print("BUTTON stop live")
                         self.monogram_stop_live_event.emit()
 
         def resetPos(self):

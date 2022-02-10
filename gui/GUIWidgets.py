@@ -118,7 +118,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
     def __init__(self, parent:QtWidgets.QWidget=None):
         super(PositionHistory, self).__init__(QtWidgets.QGraphicsScene(), parent=parent)
         # Set the properties for the window so that everything is shown and we don't have Scrollbars
-        self.view_size = (1500, 1500)
+        self.view_size = (3000, 3000)
         self.setBaseSize(self.view_size[0], self.view_size[1])
         self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
                        QtCore.Qt.AspectRatioMode.KeepAspectRatio)
@@ -263,7 +263,9 @@ class PositionHistory(QtWidgets.QGraphicsView):
             self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                     QtGui.QImage.Format.Format_Grayscale8)
             self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
+            self.stage_pos = [0, 0]
             self.painter = self.define_painter()
+            self.repaint()
 
     def resizeEvent(self, event):
         self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)

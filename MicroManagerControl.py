@@ -42,6 +42,8 @@ class MicroManagerControl(QObject):
     def set_z_position(self, pos: float):
         self.event_thread.blockZ = True
         print("set stage to ", pos)
+        pos = pos if pos > 0 else 0
+        pos = pos if pos < 202 else 202
         self.core.set_position(pos)
 
     @pyqtSlot()
