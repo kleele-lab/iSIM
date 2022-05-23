@@ -1,14 +1,11 @@
-from logging import Filter
 import clr
-import time
-import ctypes
 
 clr.AddReference('C:/Program Files/Thorlabs/Kinesis/Thorlabs.MotionControl.DeviceManagerCLI.dll')
 clr.AddReference('C:/Program Files/Thorlabs/Kinesis/Thorlabs.MotionControl.GenericMotorCLI.dll')
 clr.AddReference('C:/Program Files/Thorlabs/Kinesis/Thorlabs.MotionControl.FilterFlipperCLI.dll')
 
 import Thorlabs.MotionControl.DeviceManagerCLI as DeviceManagerCLI
-import Thorlabs.MotionControl.GenericMotorCLI as GenericMotorCLI
+# import Thorlabs.MotionControl.GenericMotorCLI as GenericMotorCLI
 import Thorlabs.MotionControl.FilterFlipperCLI as FilterFlipperCLI
 from System import UInt32, Int32
 
