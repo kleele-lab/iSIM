@@ -1,3 +1,5 @@
+import operator
+import copy
 import sys
 from typing import Tuple
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -151,6 +153,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
                                  self.fov_size[0], self.fov_size[1])
 
         self.laser = True
+        self.stage_offset = [0, 0]
 
         # Start a Timer that checks if the laser is on and enhances at that position
         self.timer = QtCore.QTimer()
@@ -160,7 +163,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
     def stage_moved(self, new_pos):
         self.stage_pos = new_pos
-        pos = self.rectangle_pos(new_pos)
+        pos = self.rectangle_pos(list(map(operator.sub, new_pos, self.stage_offset)))
         self.rect = QtCore.QRectF(pos[0], pos[1], self.fov_size[0], self.fov_size[1])
         # self.painter.drawRect(self.rect)
         self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
@@ -175,7 +178,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         return rect_pos
 
     def set_oof_arrow(self):
-        pos = self.rectangle_pos(self.stage_pos)
+        pos = self.rectangle_pos(list(map(operator.sub, self.stage_pos, self.stage_offset)))
         y = self.check_limits(pos[1]+self.fov_size[1]/2)
         x = self.check_limits(pos[0]+self.fov_size[0]/2)
         self.arrow.setVisible(1)
@@ -192,16 +195,16 @@ class PositionHistory(QtWidgets.QGraphicsView):
         elif x == self.sample_size[0]-offset and y == offset:
             self.arrow.setPos(QtCore.QPointF(self.sample_size[0]-offset, offset))
             self.arrow.setRotation(45)
-        elif self.stage_pos[0] > self.sample_size[0]/2:
+        elif pos[0] - self.sample_size[0]/2 > self.sample_size[0]/2:
             self.arrow.setPos(QtCore.QPointF(self.sample_size[0]-offset, y))
             self.arrow.setRotation(90)
-        elif self.stage_pos[0] < -self.sample_size[0]/2:
+        elif pos[0] - self.sample_size[0]/2  < -self.sample_size[0]/2:
             self.arrow.setRotation(-90)
             self.arrow.setPos(QtCore.QPointF(offset, y))
-        elif self.stage_pos[1] < -self.sample_size[1]/2:
+        elif pos[1] - self.sample_size[1]/2 < -self.sample_size[1]/2:
             self.arrow.setRotation(0)
             self.arrow.setPos(QtCore.QPointF(x, offset))
-        elif self.stage_pos[1] > self.sample_size[1]/2:
+        elif pos[1] - self.sample_size[1]/2  > self.sample_size[1]/2:
             self.arrow.setRotation(180)
             self.arrow.setPos(QtCore.QPointF(x, self.sample_size[1]-offset))
         else:
@@ -242,6 +245,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         return painter
 
     def keyPressEvent(self, event):
+        print("KEY pressed: ", event.key())
         if event.key() == 16777236:
             event.accept
             self.stage_pos[0] = self.stage_pos[0] + self.fov_size[0]
@@ -263,9 +267,11 @@ class PositionHistory(QtWidgets.QGraphicsView):
             self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                     QtGui.QImage.Format.Format_Grayscale8)
             self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
-            self.stage_pos = [0, 0]
+            # self.stage_pos = [0, 0]
+            self.stage_offset = copy.deepcopy(self.stage_pos)
             self.painter = self.define_painter()
             self.repaint()
+            self.stage_moved(self.stage_pos)
 
     def resizeEvent(self, event):
         self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)

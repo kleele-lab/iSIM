@@ -64,7 +64,8 @@ class MonogramCC(QObject):
             while done == False:
                 event = pygame.event.wait(timeout=500)
                 if event.type == 1536:  # AxisMotion
-                    self.updatePos(event.value)
+                    if event.axis == 0:
+                        self.updatePos(event.value)
                 if event.type == 1540:  # ButtonUp
                     print(event.button)
                     if event.button == 0:
@@ -97,7 +98,7 @@ class MonogramCC(QObject):
 
         def send_move(self):
             now = time.perf_counter()
-            if now - self.last_send > 0.05:
+            if now - self.last_send > 0.1:
                 self.monogram_stage_position_event.emit(self.total_relative_move)
                 # try:
                 #     self.core.set_relative_position(self.total_relative_move)
