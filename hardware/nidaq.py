@@ -188,7 +188,6 @@ class NIDAQ(QObject):
                 if channel['use']:
                     aotf = self.aotf.one_frame(self.settings, channel)
                     offset = sli - self.settings.slices[0]
-                    print(offset)
                     stage = self.stage.one_frame(self.settings, offset)
                     data = np.vstack((galvo, stage, camera, aotf))
                     channels_data.append(data)
@@ -221,7 +220,7 @@ class LiveMode(QObject):
         self.ni = ni
         core = self.ni.event_thread.bridge.get_core()
         self.channel_name= core.get_property('DPseudoChannel', "Label")
-        self.make_daq_data()
+        self.ready = self.make_daq_data()
         self.stop = False
         self.brightfield = core.get_property('PrimeB_Camera', "TriggerMode")
         self.brightfield = (self.brightfield == "Internal Trigger")
@@ -256,13 +255,18 @@ class LiveMode(QObject):
         return 0
 
     def make_daq_data(self):
-        timepoint = self.ni.generate_one_timepoint(live_channel = self.channel_name)
+        try:
+            timepoint = self.ni.generate_one_timepoint(live_channel = self.channel_name)
+        except KeyError:
+            print("WARNING: are there channels in the MDA window?")
+            return False
         no_frames = np.max([1, round(200/self.ni.cycle_time)])
         print("N Frames ", no_frames)
         self.daq_data = np.tile(timepoint, no_frames)
         self.stop_data = np.asarray(
                 [[self.ni.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
         print(self.daq_data.shape[1])
+        return True
 
     def send_stop_data(self):
         self.ni.init_task()
@@ -275,6 +279,10 @@ class LiveMode(QObject):
             return
 
         if live_is_on:
+            if not self.ready:
+                core = self.ni.event_thread.bridge.get_core()
+                self.channel_name = core.get_property('DPseudoChannel', "Label")
+                self.ready = self.make_daq_data()
             self.stop = False
             self.update_settings(self.ni.settings)
             self.ni.task.start()
@@ -290,8 +298,7 @@ class Acquisition(QObject):
         self.settings = settings
         self.ni = ni
         self.daq_data = None
-        self.ready = True
-        self.make_daq_data()
+        self.ready = self.make_daq_data()
 
     def update_settings(self, new_settings):
         self.ready = False
@@ -307,7 +314,11 @@ class Acquisition(QObject):
         self.ready = True
 
     def make_daq_data(self):
-        timepoint = self.ni.generate_one_timepoint()
+        try:
+            timepoint = self.ni.generate_one_timepoint()
+        except ValueError:
+            print("WARNING: Are the channels in the MDA pannel?")
+            return False
         timepoint = self.add_interval(timepoint)
         # Make zstage go up/down over two timepoints
         if self.settings.acq_order_mode == 0:
@@ -319,6 +330,7 @@ class Acquisition(QObject):
                 self.daq_data = np.hstack([self.daq_data, timepoint])
         else:
             self.daq_data = np.tile(timepoint, self.settings.timepoints)
+        return True
 
     def add_interval(self, timepoint):
         if (self.ni.smpl_rate*self.settings.interval_ms/1000 <= timepoint.shape[1] and
@@ -456,6 +468,9 @@ class AOTF:
         elif channel['name'] == '561':
             aotf_488 = make_pulse(self.ni, 0, 0, 0)
             aotf_561 = make_pulse(self.ni, 0, self.power_561/10, 0)
+        elif channel['name'] == 'LED':
+            aotf_488 = make_pulse(self.ni, 0, 0, 0)
+            aotf_561 = make_pulse(self.ni, 0, 0, 0)
         aotf = np.vstack((blank, aotf_488, aotf_561))
         aotf = self.add_delays(aotf, settings)
         return aotf
@@ -496,6 +511,10 @@ class Brightfield:
         with nidaqmx.Task() as task:
             task.ao_channels.add_ao_voltage_chan("Dev1/ao6")
             task.write(power, auto_start=True)
+
+    def one_frame(self, settings):
+        led = make_pulse(self.ni, 0, 0.3, 0)
+        return led
 
 if __name__ == '__main__':
     import sys

@@ -31,7 +31,7 @@ class EventThread(QObject):
         self.event_sockets = []
         self.num_sockets = 5
         for socket in range(self.num_sockets):
-            socket_provider = self.bridge.construct_java_object('org.micromanager.Studio',
+            socket_provider = self.bridge._construct_java_object('org.micromanager.Studio',
                                                                 new_socket=True)
             self.event_sockets.append(socket_provider._socket)
 
