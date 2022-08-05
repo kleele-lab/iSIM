@@ -7,4 +7,5 @@ gui/qt_classes.py
 isimgui.egg-info/PKG-INFO
 isimgui.egg-info/SOURCES.txt
 isimgui.egg-info/dependency_links.txt
+isimgui.egg-info/requires.txt
 isimgui.egg-info/top_level.txt

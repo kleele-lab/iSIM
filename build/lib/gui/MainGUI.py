@@ -1,6 +1,6 @@
 import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot
-from .qt_classes import QWidgetRestore
+from gui.qt_classes import QWidgetRestore
 from gui.GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean
 from event_threadQ import EventThread
 from MonogramCC import MonogramCC
@@ -130,10 +130,10 @@ class AlignmentGUI(QtWidgets.QWidget):
         self.view = AlignmentWidget()
         self.view.setFixedWidth(1800)
         try:  # this makes sense only if Micro-Manager is running
-            self.event_thread = EventThread()
-            self.event_thread.start()
-            self.event_thread.new_image_event.connect(self.mean.add_image)
-            self.event_thread.new_image_event.connect(self.view.add_image)
+            self.event_thread = EventThread(image_events=True, alignment=True)
+            self.event_listener = self.event_thread.listener
+            self.event_listener.new_image_event.connect(self.mean.add_image)
+            self.event_listener.new_image_event.connect(self.view.add_image)
         except TimeoutError as error:
             print(error)
             print('No, will work as Test Widgets')
@@ -146,7 +146,7 @@ class AlignmentGUI(QtWidgets.QWidget):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    miniapp = MainGUI()
+    miniapp = AlignmentGUI()
     miniapp.show()
     sys.exit(app.exec_())
 

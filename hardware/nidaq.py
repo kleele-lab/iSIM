@@ -9,7 +9,7 @@ import copy
 import matplotlib.pyplot as plt
 
 import time
-from event_threadQ import EventThread
+from pymm_eventserver.event_thread import EventThread
 from gui.GUIWidgets import SettingsView
 from hardware.FilterFlipper import Flippers
 
@@ -20,7 +20,7 @@ class NIDAQ(QObject):
 
     def __init__(self, event_thread: EventThread, mm_interface: MicroManagerControl):
         super().__init__()
-        self.event_thread = event_thread
+        self.event_thread = event_thread.listener
         self.core = self.event_thread.bridge.get_core()
         self.mm_interface = mm_interface
 

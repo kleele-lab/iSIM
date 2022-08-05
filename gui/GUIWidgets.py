@@ -10,7 +10,7 @@ import numpy as np
 import time
 from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
 from threading import Thread
-from event_threadQ import EventThread
+from pymm_eventserver.event_thread import EventThread
 from MonogramCC import MonogramCC
 from scipy.ndimage import center_of_mass
 

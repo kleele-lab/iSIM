@@ -1,0 +1,9 @@
+pyqt5
+pycromanager
+qimage2ndarray
+pyqtgraph
+pygame
+scipy
+nidaqmx
+wheel
+pymm-eventserver
