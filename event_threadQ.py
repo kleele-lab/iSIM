@@ -1,6 +1,4 @@
-from xmlrpc.client import boolean
 from pycromanager import Bridge
-import threading
 import re
 import zmq
 import json
@@ -15,7 +13,7 @@ SOCKET = "5556"
 class EventThread(QObject):
     """Thread that receives events from Micro-Manager and relays them to the main program"""
 
-    def __init__(self):
+    def __init__(self, image_events:bool =False, alignment:bool = False):
         super().__init__()
 
         self.bridge = Bridge(debug=False)
@@ -36,13 +34,18 @@ class EventThread(QObject):
         self.socket.setsockopt(zmq.RCVTIMEO, 1000)  # Timeout for the recv() function
 
         self.thread_stop = False
-
-        self.topics = ["StandardEvent", "GUIRefreshEvent", "ImageEvent"]
+        if image_events:
+            self.topics = ["StandardEvent", "GUIRefreshEvent", "LiveMode", "Acquisition", "GUI",
+                           "Hardware", "Settings", "NewImage"]
+        else:
+            self.topics = ["StandardEvent", "GUIRefreshEvent", "LiveMode", "Acquisition", "GUI",
+                           "Hardware", "Settings"] #, "NewImage"]
         for topic in self.topics:
             self.socket.setsockopt_string(zmq.SUBSCRIBE, topic)
 
         self.thread = QThread()
-        self.listener = EventListener(self.socket, self.event_sockets, self.bridge, self.thread)
+        self.listener = EventListener(self.socket, self.event_sockets, self.bridge, self.thread,
+                                      alignment)
         self.listener.moveToThread(self.thread)
         self.thread.started.connect(self.listener.start)
         self.listener.stop_thread_event.connect(self.stop)
@@ -73,13 +76,14 @@ class EventListener(QObject):
     live_mode_event = pyqtSignal(bool)
     stop_thread_event = pyqtSignal()
 
-    def __init__(self, socket, event_sockets, bridge: Bridge, thread: QThread):
+    def __init__(self, socket, event_sockets, bridge: Bridge, thread: QThread, alignment: bool):
         super().__init__()
         self.loop_stop = False
         self.socket = socket
         self.event_sockets = event_sockets
         self.bridge = bridge
         self.thread = thread
+        self.alignment = alignment
         # Record times for events that we receive twice
         self.last_acq_started = time.perf_counter()
         self.last_custom_mda = time.perf_counter()
@@ -88,7 +92,6 @@ class EventListener(QObject):
         self.blockImages = False
 
     pyqtSlot()
-
     def start(self):
         instance = 0
         while not self.loop_stop:
@@ -96,19 +99,33 @@ class EventListener(QObject):
             try:
                 #  Get the reply.
                 reply = str(self.socket.recv())
-                # topic = re.split(' ', reply)[0][2:]
-                message = json.loads(re.split(" ", reply)[1][0:-1])
-                socket_num = instance % len(self.event_sockets)
-                pre_evt = self.bridge._class_factory.create(message)
+                try:
+                    message = json.loads(re.split(" ", reply)[1][0:-1])
+                    socket_num = instance % len(self.event_sockets)
 
-                evt = pre_evt(
-                    socket=self.event_sockets[socket_num],
-                    serialized_object=message,
-                    bridge=self.bridge,
-                )
-
-                eventString = message["class"].split(r".")[-1]
-                print(eventString, " ", time.perf_counter())
+                    eventString = message["class"].split(r".")[-1]
+                    pre_evt = self.bridge._class_factory.create(message)
+                    evt = pre_evt(
+                        socket=self.event_sockets[socket_num],
+                        serialized_object=message,
+                        bridge=self.bridge,
+                    )
+                except json.decoder.JSONDecodeError:
+                    print("ImageEvent")
+                    image_bit = str(self.socket.recv())
+                    # TODO: Maybe this should also be done for other bitdepths?!
+                    image_depth = np.uint16 if image_bit == "b'2'" else np.uint8
+                    image = np.frombuffer(self.socket.recv(), dtype=image_depth)
+                    image_params = re.split("NewImage ", reply)[1]
+                    image_params = re.split(", ", image_params[1:-2])
+                    image_params = [float(x) for x in image_params]
+                    py_image = PyImage(
+                        image.reshape([int(image_params[0]), int(image_params[1])]),
+                        *image_params[2:]
+                    )
+                    self.new_image_event.emit(py_image)
+                print(eventString)
+                # print(eventString, " ", time.perf_counter())
                 if "ExposureChangedEvent" in eventString:
                     print(evt.get_new_exposure_time())
                 elif "DefaultAcquisitionStartedEvent" in eventString:
@@ -160,9 +177,10 @@ class EventListener(QObject):
                         print("SKIPPED")
                     self.last_custom_mda = time.perf_counter()
                 elif "DefaultLiveModeEvent" in eventString:
-                    self.blockImages = evt.get_is_on()
+                    if not self.alignment:
+                        self.blockImages = evt.get_is_on()
                     self.live_mode_event.emit(self.blockImages)
-                    # print("Blocking images in live: ", self.blockImages)
+                #     print("Blocking images in live: ", self.blockImages)
 
                 else:
                     print("This event is not known yet")

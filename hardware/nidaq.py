@@ -6,6 +6,8 @@ import nidaqmx.stream_writers
 import numpy as np
 import copy
 
+import matplotlib.pyplot as plt
+
 import time
 from event_threadQ import EventThread
 from gui.GUIWidgets import SettingsView
@@ -124,16 +126,17 @@ class NIDAQ(QObject):
         if device in ["561_AOTF", "488_AOTF", 'exposure']:
             self.live.make_daq_data()
 
-
     @pyqtSlot(object)
     def run_acquisition_task(self, _):
         if not self.eda:
+            self.adjust_exposure()
             self.event_thread.mda_settings_event.disconnect(self.new_settings)
             time.sleep(0.5)
             self.acq.run_acquisition()
 
     @pyqtSlot(object)
     def acq_done(self, _):
+        self.reset_exposure()
         self.event_thread.mda_settings_event.connect(self.new_settings)
         self.acq.set_z_position.emit(self.acq.orig_z_position)
         self.event_thread.mda_settings_event.connect(self.new_settings)
@@ -144,7 +147,14 @@ class NIDAQ(QObject):
 
     @pyqtSlot(bool)
     def start_live(self, live_is_on):
+        if live_is_on and not self.live.brightfield:
+            self.event_thread.mda_settings_event.disconnect(self.new_settings)
+            self.adjust_exposure()
+        elif not live_is_on and not self.live.brightfield:
+            self.reset_exposure()
+            self.event_thread.mda_settings_event.connect(self.new_settings)
         self.live.toggle(live_is_on)
+        print(self.core.get_property("PrimeB_Camera", "Exposure"))
 
     def generate_one_timepoint(self, live_channel: int = None, z_inverse: bool = False):
         if live_channel == "LED":
@@ -156,10 +166,10 @@ class NIDAQ(QObject):
             old_post_delay = self.settings.post_delay
             self.settings.post_delay = 0.03
             galvo = self.galvo.one_frame(self.settings)
-            camera = self.camera.one_frame(self.settings)
             channel_name = '488' if live_channel is None else live_channel
             stage = self.stage.one_frame(self.settings, 0)
             aotf = self.aotf.one_frame(self.settings, self.settings.channels[channel_name])
+            camera = self.camera.one_frame(self.settings)
             timepoint = np.vstack((galvo, stage, camera, aotf))
             self.settings.post_delay = old_post_delay
         else:
@@ -213,6 +223,19 @@ class NIDAQ(QObject):
                 data = np.hstack(slices_data)
                 channels_data.append(data)
         return np.hstack(channels_data)
+
+    def adjust_exposure(self):
+        readout_time = self.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-6  # in milliseconds
+        exposure_set = float(self.core.get_property("PrimeB_Camera", "Exposure"))
+        self.core.set_property("PrimeB_Camera", "Exposure", exposure_set + readout_time)
+        self.core.set_exposure(exposure_set + readout_time)
+        # self.event_thread.bridge.get_studio().get_application().set_exposure(exposure_set + readout_time)
+        print("Exposure set to ",  exposure_set + readout_time)
+
+    def reset_exposure(self):
+        self.core.set_property("PrimeB_Camera", "Exposure", self.cycle_time)
+        self.core.set_exposure( self.cycle_time)
 
 class LiveMode(QObject):
     def __init__(self, ni:NIDAQ):
@@ -273,7 +296,7 @@ class LiveMode(QObject):
         self.ni.task.write(self.stop_data)
 
     def toggle(self, live_is_on):
-
+        print(live_is_on)
         if self.brightfield:
             self.ni.brightfield_control.led(live_is_on, 0.3)
             return
@@ -290,6 +313,11 @@ class LiveMode(QObject):
         else:
             self.stop = True
 
+    def plot_trigger_data(self):
+        for device in self.daq_data:
+            plt.plot(device)
+        plt.show()
+        return True
 
 class Acquisition(QObject):
     set_z_position = pyqtSignal(float)
@@ -359,6 +387,18 @@ class Acquisition(QObject):
         self.ni.task.start()
         print('================== Data written        ', written)
 
+    def adjust_exposure(self):
+        readout_time = self.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-6  # in milliseconds
+        exposure_set = float(self.core.get_property("PrimeB_Camera", "Exposure"))
+        self.core.set_property("PrimeB_Camera", "Exposure", exposure_set + readout_time)
+        self.core.set_exposure(exposure_set + readout_time)
+        print("Exposure set to ",  exposure_set + readout_time)
+
+    def reset_exposure(self):
+        self.core.set_property("PrimeB_Camera", "Exposure", self.exposure)
+        self.core.set_exposure(self.exposure)
+
 
 def make_pulse(ni, start, end, offset):
     up = np.ones(round(ni.duty_cycle*ni.n_points))*start
@@ -370,21 +410,30 @@ def make_pulse(ni, start, end, offset):
 class Galvo:
     def __init__(self, ni: NIDAQ):
         self.ni = ni
-        self.offset_0= -0.15
-        self.amp_0 = 0.75
-        self.parking_voltage = -3
+        self.offset_0 = -0.15
+        self.amp_0 = 0.234
+        self.parking_voltage = self.offset_0  # -3.2
 
     def one_frame(self, settings):
+        #TODO: Sweeps per frame not possible anymore!
         self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
-        down1 = np.linspace(0,-self.amp_0,round(self.n_points/(4*settings.sweeps_per_frame)))
-        up = np.linspace(-self.amp_0,self.amp_0,round(self.n_points/(2*settings.sweeps_per_frame)))
-        down2 = np.linspace(self.amp_0,0,round(self.n_points/settings.sweeps_per_frame) -
-                            round(self.n_points/(4*settings.sweeps_per_frame)) -
-                            round(self.n_points/(2*settings.sweeps_per_frame)))
-        galvo_frame = np.concatenate((down1, up, down2))
-        galvo_frame = np.tile(galvo_frame, settings.sweeps_per_frame)
-        galvo_frame = galvo_frame + self.offset_0
-        galvo_frame = galvo_frame[0:self.n_points]
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        # down1 = np.linspace(0,-self.amp_0,round(self.n_points/(4*settings.sweeps_per_frame)))
+        # up = np.linspace(-self.amp_0,self.amp_0,round(self.n_points/(2*settings.sweeps_per_frame)))
+        # down2 = np.linspace(self.amp_0,0,round(self.n_points/settings.sweeps_per_frame) -
+        #                     round(self.n_points/(4*settings.sweeps_per_frame)) -
+        #                     round(self.n_points/(2*settings.sweeps_per_frame)))
+        # galvo_frame = np.concatenate((down1, up, down2))
+        # galvo_frame = np.tile(galvo_frame, settings.sweeps_per_frame)
+        # galvo_frame = galvo_frame[0:self.n_points]
+        # Make this 30 ms shorter for the camera readout
+        n_points = self.n_points - round(readout_time * self.ni.smpl_rate)
+        galvo_frame = np.linspace(-self.amp_0, self.amp_0, n_points) + self.offset_0
+        # Add the 10 ms in the waiting position
+        readout_delay0 = np.ones(round(self.ni.smpl_rate * readout_time)) * (-self.amp_0 + self.offset_0)
+        readout_delay1 = np.ones(round(self.ni.smpl_rate * readout_time)) * (self.amp_0 + self.offset_0)
+        galvo_frame = np.hstack([readout_delay0, galvo_frame, readout_delay1])
         galvo_frame = self.add_delays(galvo_frame, settings)
         return galvo_frame
 
@@ -392,11 +441,9 @@ class Galvo:
         if settings.post_delay > 0:
             delay = np.ones(round(self.ni.smpl_rate * settings.post_delay)) * self.parking_voltage
             frame = np.hstack([frame, delay])
-
         if settings.pre_delay > 0:
             delay = np.ones(round(self.ni.smpl_rate * settings.pre_delay)) * self.parking_voltage
             frame = np.hstack([delay, frame])
-
         return frame
 
 
@@ -410,11 +457,19 @@ class Stage:
     def one_frame(self, settings, height_offset):
         height_offset = self.convert_z(height_offset)
         stage_frame = make_pulse(self.ni, height_offset, height_offset, 0)
+        stage_frame = self.add_readout(stage_frame)
         stage_frame = self.add_delays(stage_frame, settings)
         return stage_frame
 
     def convert_z(self, z_um):
         return (z_um/self.calibration) * self.max_v
+
+    def add_readout(self, frame):
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        readout_delay = np.ones(round(self.ni.smpl_rate * readout_time))* frame[-1]
+        frame = np.hstack([frame, readout_delay])
+        return frame
 
     def add_delays(self, frame, settings):
         if settings.post_delay > 0:
@@ -434,9 +489,17 @@ class Camera:
         self.pulse_voltage = 5
 
     def one_frame(self, settings):
-        camera_frame = make_pulse(self.ni, 5, 0, 0)
+        camera_frame = make_pulse(self.ni, self.pulse_voltage, 0, 0)
+        camera_frame = self.add_readout(camera_frame)
         camera_frame = self.add_delays(camera_frame, settings)
         return camera_frame
+
+    def add_readout(self, frame):
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        readout_delay = np.zeros(round(self.ni.smpl_rate * readout_time))
+        frame = np.hstack([frame, readout_delay])
+        return frame
 
     def add_delays(self, frame, settings):
         if settings.post_delay > 0:
@@ -444,11 +507,8 @@ class Camera:
             frame = np.hstack([frame, delay])
 
         if settings.pre_delay > 0:
-            delay = np.zeros(round(self.ni.smpl_rate * settings.pre_delay))
-            #TODO whty is predelay after camera trigger?
-            # Maybe because the camera 'stores' the trigger?
-            frame = np.hstack([frame, delay])
-
+            delay= np.zeros(round(self.ni.smpl_rate * settings.pre_delay))
+            frame = np.hstack([delay, frame])
         return frame
 
 
@@ -461,19 +521,34 @@ class AOTF:
         self.power_561 = float(core.get_property('561_AOTF',r"Power (% of max)"))
 
     def one_frame(self, settings:MMSettings, channel:dict):
-        blank = make_pulse(self.ni, 0, self.blank_voltage, 0)
+        self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        n_points = self.n_points - round(readout_time * self.ni.smpl_rate)
+
+        blank = np.ones(n_points) * self.blank_voltage
         if channel['name'] == '488':
-            aotf_488 = make_pulse(self.ni, 0, self.power_488/10, 0)
-            aotf_561 = make_pulse(self.ni, 0, 0, 0)
+            aotf_488 = np.ones(n_points) * self.power_488/10
+            aotf_561 = np.zeros(n_points)
         elif channel['name'] == '561':
-            aotf_488 = make_pulse(self.ni, 0, 0, 0)
-            aotf_561 = make_pulse(self.ni, 0, self.power_561/10, 0)
+            aotf_488 = np.zeros(n_points)
+            aotf_561 = np.ones(n_points) * self.power_561/10
         elif channel['name'] == 'LED':
-            aotf_488 = make_pulse(self.ni, 0, 0, 0)
-            aotf_561 = make_pulse(self.ni, 0, 0, 0)
+            aotf_488 = np.zeros(n_points)
+            aotf_561 = np.zeros(n_points)
         aotf = np.vstack((blank, aotf_488, aotf_561))
+        # aotf = np.hstack([np.zeros((3, 20)), aotf[:, 20:-20], np.zeros((3, 20))])
+        aotf = self.add_readout(aotf)
         aotf = self.add_delays(aotf, settings)
         return aotf
+
+    def add_readout(self, frame):
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        readout_delay = np.zeros((frame.shape[0], round(self.ni.smpl_rate * readout_time)))
+        frame = np.hstack([readout_delay, frame, readout_delay])
+        return frame
+
 
     def add_delays(self, frame:np.ndarray, settings: MMSettings):
         if settings.post_delay > 0:

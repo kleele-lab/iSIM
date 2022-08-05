@@ -1,5 +1,6 @@
 import operator
 import copy
+import time
 import sys
 from typing import Tuple
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -122,15 +123,21 @@ class PositionHistory(QtWidgets.QGraphicsView):
         # Set the properties for the window so that everything is shown and we don't have Scrollbars
         self.view_size = (3000, 3000)
         self.setBaseSize(self.view_size[0], self.view_size[1])
-        self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
-                       QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-        self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
+        # self.fitInView(0, 25,
+        #     # -self.view_size[0], -self.view_size[1] + 25,
+        #                self.view_size[0], self.view_size[1] - 50,
+        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.setSceneRect(0, 25,
+            # -self.view_size[0], -self.view_size[1] + 25,
+                          self.view_size[0], self.view_size[1] - 50)
+        self.scale(-1, -1)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # Initialize the position of the stage and the parameters
         self.stage_pos = [0, 0]
-        self.fov_size = (81, 81)
+        self.size_adjust = 10
+        self.fov_size = (114/self.size_adjust, 114/self.size_adjust)
         self.sample_size = self.view_size
         pos = self.rectangle_pos(self.stage_pos)
 
@@ -138,10 +145,11 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                 QtGui.QImage.Format.Format_RGB32)
 
-        self.pixmap = self.scene().addPixmap(QtGui.QPixmap.fromImage(self.map))
+        self.my_pixmap = self.scene().addPixmap(QtGui.QPixmap.fromImage(self.map))
+        self.fitInView()
         self.now_rect = self.scene().addRect(QtCore.QRectF(0, 0,
                                                            self.fov_size[0], self.fov_size[1]),
-                                             QtGui.QPen(Colors().blue,4),
+                                             QtGui.QPen(Colors().blue,1),
                                              QtGui.QBrush(QtGui.QColorConstants.Transparent))
         self.now_rect.setPos(pos[0], pos[1])
         self.arrow = self.scene().addPolygon(self.oof_arrow(),
@@ -155,6 +163,13 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.laser = True
         self.stage_offset = [0, 0]
 
+        # Enable Zoom
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self._zoom = 0
+        self.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
+        # self.setSceneRect(self.view_size[0]*0.45, self.view_size[1]*0.55,
+        #                   self.view_size[0]/10, self.view_size[1]/10)
         # Start a Timer that checks if the laser is on and enhances at that position
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.increase_values)
@@ -163,14 +178,15 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
     def stage_moved(self, new_pos):
         self.stage_pos = new_pos
+        new_pos = [x/10 for x in new_pos]
         pos = self.rectangle_pos(list(map(operator.sub, new_pos, self.stage_offset)))
         self.rect = QtCore.QRectF(pos[0], pos[1], self.fov_size[0], self.fov_size[1])
         # self.painter.drawRect(self.rect)
-        self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
+        self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
         self.now_rect.setPos(QtCore.QPointF(pos[0], pos[1]))
         self.set_oof_arrow()
         self.repaint()
-        self.xy_stage_position_python.emit(new_pos)
+        self.xy_stage_position_python.emit(self.stage_pos)
 
     def rectangle_pos(self, pos):
         rect_pos = [int(self.sample_size[0]*0.5 + pos[0] - self.fov_size[0]/2),
@@ -232,7 +248,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
             color.setAlpha(self.laser)
             self.painter.brush().setColor(color)
             self.painter.drawRect(self.rect)
-            self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
+            self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
         self.painter.end()
 
     def define_painter(self, alpha=10):
@@ -245,39 +261,84 @@ class PositionHistory(QtWidgets.QGraphicsView):
         return painter
 
     def keyPressEvent(self, event):
-        print("KEY pressed: ", event.key())
+        # print("KEY pressed: ", event.key())
+        # print(event.modifiers() & QtCore.Qt.ShiftModifier)
+        if event.modifiers() & QtCore.Qt.ShiftModifier:
+            move_modifier = 0.2 * self.size_adjust
+        else:
+            move_modifier = 1 * self.size_adjust
         if event.key() == 16777236:
-            event.accept
-            self.stage_pos[0] = self.stage_pos[0] + self.fov_size[0]
+            event.accept()
+            self.stage_pos[0] = self.stage_pos[0] - self.fov_size[0] * move_modifier
             self.stage_moved(self.stage_pos)
         if event.key() == 16777234:
-            event.accept
-            self.stage_pos[0] = self.stage_pos[0] - self.fov_size[0]
+            event.accept()
+            self.stage_pos[0] = self.stage_pos[0] + self.fov_size[0] * move_modifier
             self.stage_moved(self.stage_pos)
         if event.key() == 16777235:
-            event.accept
-            self.stage_pos[1] = self.stage_pos[1] - self.fov_size[1]
+            event.accept()
+            self.stage_pos[1] = self.stage_pos[1] + self.fov_size[1] * move_modifier
             self.stage_moved(self.stage_pos)
         if event.key() == 16777237:
-            event.accept
-            self.stage_pos[1] = self.stage_pos[1] + self.fov_size[1]
+            event.accept()
+            self.stage_pos[1] = self.stage_pos[1] - self.fov_size[1] * move_modifier
             self.stage_moved(self.stage_pos)
         if event.key() == 16777220:
             self.painter.end()
             self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                     QtGui.QImage.Format.Format_Grayscale8)
-            self.pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
+            self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
             # self.stage_pos = [0, 0]
             self.stage_offset = copy.deepcopy(self.stage_pos)
             self.painter = self.define_painter()
             self.repaint()
             self.stage_moved(self.stage_pos)
 
+    def wheelEvent(self, event):
+        if event.angleDelta().y() > 0:
+            factor = 0.8
+            self._zoom -= 1
+        else:
+            factor = 1.25
+            self._zoom += 1
+        if self._zoom > 0:
+            self.scale(factor, factor)
+        elif self._zoom == 0:
+            self.fitInView()
+        else:
+            self._zoom = 0
+
+    def fitInView(self, scale=False):
+        rect = QtCore.QRectF(self.my_pixmap.pixmap().rect())
+        # if not rect.isNull():
+        self.setSceneRect(rect)
+        unity = self.transform().mapRect(QtCore.QRectF(0, 0, 1, 1))
+        self.scale(1 / unity.width(), 1 / unity.height())
+        viewrect = self.viewport().rect()
+        scenerect = self.transform().mapRect(rect)
+        factor = min(viewrect.width() / scenerect.width(),
+                        viewrect.height() / scenerect.height())
+        self.scale(factor, factor)
+        self._zoom = 0
+
+
     def resizeEvent(self, event):
-        self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
-        self.setBaseSize(self.view_size[0], self.view_size[1])
-        self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
-                       QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        # self.setBaseSize(self.view_size[0], self.view_size[1])
+        self.fitInView()
+        self.scale(10, 10)
+        self.centerOn(self.now_rect)
+        # self.scale(10,10)
+        # self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
+        # self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
+        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        # self.fitInView(0, 25,
+        #             #    -self.view_size[0], -self.view_size[1] + 25,
+        #                self.view_size[0], self.view_size[1] - 50,
+        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        # self.setSceneRect(0, 25,
+        #                 #   -self.view_size[0], -self.view_size[1] + 25,
+        #                   self.view_size[0], self.view_size[1] - 50,)
+
 
 
 
@@ -304,42 +365,44 @@ class AlignmentWidget(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         width = height = 140
-        self.window_offset = 61
-        super(AlignmentWidget, self).__init__(parent=parent)
-
+        self.window_offset = 62
+        super().__init__()
+        self.angle = -0.0665
         self.pixmap = QtGui.QPixmap(width,height)
         grid = QtWidgets.QGridLayout(self)
-        top_bottom_offset = np.tan(0.063948864)*(1024-height/2) - self.window_offset
+        top_bottom_offset = np.tan(abs(self.angle))*(1024-height/2) - self.window_offset
         self.view_top = AlignmentView(line_offset= - top_bottom_offset,
-                                      expected_shape=(width,height))
-        self.view_center = AlignmentView(center = True, expected_shape=(width,height))
+                                      expected_shape=(width,height),
+                                      angle=self.angle)
+        self.view_center = AlignmentView(center = True, expected_shape=(width,height),
+                                         angle=self.angle)
         self.view_center.viewBox.disableAutoRange()
         self.view_center.viewBox.setRange(xRange = (35,105), yRange=(35,105))
         self.view_center.viewBox.setMouseMode(self.view_center.viewBox.RectMode)
         self.view_bottom = AlignmentView(line_offset=top_bottom_offset,
-                                         expected_shape=(width,height))
-        grid.addWidget(self.view_top, 0, 1)
+                                         expected_shape=(width,height), angle=self.angle)
+        grid.addWidget(self.view_top, 0, 1, 1, 1)
         grid.addWidget(self.view_center, 0, 0, 2, 1)
-        grid.addWidget(self.view_bottom, 1, 1)
+        grid.addWidget(self.view_bottom, 1, 1, 1, 1)
         self.size = int(width/2)
 
     def add_image(self, image):
         qimage = image.raw_image
-
         self.view_top.set_qimage(qimage[0:self.size*2,
                                         1024-self.size-self.window_offset:1024+self.size-self.window_offset])
         self.view_center.set_qimage(qimage[1024-self.size:1024+self.size,
                                            1024-self.size:1024+self.size])
         self.view_bottom.set_qimage(qimage[2048-self.size*2:2048,
-                                           1024-self.size+self.window_offset:1024+self.size+self.window_offset])
+                                           1024-self.size+self.window_offset-1:1024+self.size+self.window_offset-1])
 
 
 class AlignmentView(GraphicsLayoutWidget):
     """ Extend live view with functionality for alignment """
 
     def __init__(self, parent=None, center:bool = False,
-                 line_offset:float = 0., expected_shape:Tuple = (160, 160)):
-        super(AlignmentView, self).__init__(parent=parent)
+                 line_offset:float = 0., expected_shape:Tuple = (160, 160),
+                 angle: float = 0.65):
+        super().__init__()
         self.setSceneRect(0, 0, expected_shape[0], expected_shape[1])
         self.viewBox = self.addViewBox()
         self.viewBox.setAspectLocked()
@@ -357,7 +420,7 @@ class AlignmentView(GraphicsLayoutWidget):
         self.fit_number = 0
 
 
-        self.line = LineItem(center=center, offset=line_offset, shape=expected_shape)
+        self.line = LineItem(center=center, offset=line_offset, shape=expected_shape, angle=angle)
         self.viewBox.addItem(self.line)
 
         self.peak_timer = QtCore.QTimer()
@@ -366,9 +429,9 @@ class AlignmentView(GraphicsLayoutWidget):
         self.fit_timer = QtCore.QTimer()
         self.fit_timer.timeout.connect(self.update_peak_location)
         self.fit_timer.start(500)
+        self.reset_line()
 
     def update_peaks(self):
-        self.reset_line()
         self.get_peaks()
 
     def update_peak_location(self):
@@ -381,6 +444,7 @@ class AlignmentView(GraphicsLayoutWidget):
         self.update()
 
     def get_peaks(self):
+        perf0 = time.perf_counter()
         self.fit_timer.stop()
         data = np.copy(self.raw_data)
         mean_image = np.mean(data)
@@ -389,6 +453,9 @@ class AlignmentView(GraphicsLayoutWidget):
         data[-self.window_size:,:] = mean_image * np.ones_like(data[-self.window_size:,:])
         data[:,-self.window_size:] = mean_image * np.ones_like(data[:,-self.window_size:])
         max_value = 1000000
+
+        perf1 = time.perf_counter()
+        print("Part 1:", perf1 - perf0)
 
         self.old_pointers = self.pointers
         self.pointers = []
@@ -409,6 +476,8 @@ class AlignmentView(GraphicsLayoutWidget):
                 data[max_pixel[0], max_pixel[1]] = np.mean(data)
         self.fit_number = 0
         self.fit_timer.start()
+        perf2 = time.perf_counter()
+        print("Part 2:", perf2 - perf1)
 
     def fit_peaks(self):
         data = np.copy(self.raw_data)
@@ -458,8 +527,10 @@ class AlignmentView(GraphicsLayoutWidget):
 
 
 class LineItem(GraphicsObject):
-    """Alignment Line with angle and offset"""
-    def __init__(self, offset:float = -30, angle:float = -0.063948864, center:bool = False,
+    """Alignment Line with angle and offset
+
+    Original angle: -0.063948864"""
+    def __init__(self, offset:float = -30, angle:float = -0.065, center:bool = False,
                  shape:Tuple = (160,160)):
         super().__init__()
         self.offset = offset
@@ -476,7 +547,6 @@ class LineItem(GraphicsObject):
         """ Generate the line. The size should at some point be set depending on the Range of
         the ViewBox for example to ensure always the same apparent size. """
         size = self.shape
-        print(size)
         painter = QtGui.QPainter(self.picture)
         painter.setPen(mkPen(color=self.color, width=2))
         dx = np.tan(self.angle)*size[1]/2
@@ -612,12 +682,12 @@ class TestThread(Thread):
 if __name__ == '__main__':
     import time
     app = QtWidgets.QApplication(sys.argv)
-    # miniapp = MiniApp()
-    # miniapp.show()
+    miniapp = MiniApp()
+    miniapp.show()
     # thread = TestThread(miniapp)
     # thread.start()
 
-    settings_view = SettingsView()
-    settings_view.show()
+    # settings_view = SettingsView()
+    # settings_view.show()
 
     sys.exit(app.exec_())

@@ -27,8 +27,8 @@ class MMSettings:
     timepoints: int =  11
     interval_ms: int = 1000
 
-    pre_delay: float = 0.0
-    post_delay: float = 0.03
+    pre_delay: float = 0.00
+    post_delay: float = 0.00
 
     acq_order_mode: int = 0
 
