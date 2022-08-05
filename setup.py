@@ -11,6 +11,7 @@ setup(name='isimgui', version='0.1.2', packages=find_packages(),
         "scipy",
         "nidaqmx",
         "wheel",
-        "pyhtonnnet"
+        "pyhtonnnet",
+        "pymm-eventserver"
     ]
 )
