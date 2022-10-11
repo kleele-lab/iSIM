@@ -10,11 +10,11 @@ import numpy as np
 import time
 from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
 from threading import Thread
-from pymm_eventserver.event_thread import EventThread
-from MonogramCC import MonogramCC
+from pymm_eventserver.event_thread import EventThread, MMSettings
+from isimgui.MonogramCC import MonogramCC
 from scipy.ndimage import center_of_mass
+import qimage2ndarray
 
-from data_structures import MMSettings
 
 # Adjust for different screen sizes
 QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
@@ -23,6 +23,7 @@ class Colors(object):
     """ Defines colors for easy access in all widgets. """
     def __init__(self):
         self.blue = QtGui.QColor(25, 180, 210, alpha=150)
+        self.red = QtGui.QColor(220, 20, 60, alpha=150)
 
 
 class FocusSlider(QtWidgets.QSlider):
@@ -146,11 +147,21 @@ class PositionHistory(QtWidgets.QGraphicsView):
                                 QtGui.QImage.Format.Format_RGB32)
 
         self.my_pixmap = self.scene().addPixmap(QtGui.QPixmap.fromImage(self.map))
+        self.my_pixmap.setZValue(-100)
         self.fitInView()
+
+        # Circle giving relation to coverslip
+        diameter = self.view_size[0]/2
+        self.circle = self.scene().addEllipse(QtCore.QRectF(0, 0, diameter, diameter),
+                                              QtGui.QPen(Colors().red,3),
+                                              QtGui.QBrush(QtGui.QColorConstants.Transparent))
+        self.circle.setPos(self.sample_size[0]/2 - diameter/2, self.sample_size[1]/2 - diameter/2)
+        self.circle.setZValue(-99)
         self.now_rect = self.scene().addRect(QtCore.QRectF(0, 0,
                                                            self.fov_size[0], self.fov_size[1]),
                                              QtGui.QPen(Colors().blue,1),
                                              QtGui.QBrush(QtGui.QColorConstants.Transparent))
+        self.now_rect.setZValue(100)
         self.now_rect.setPos(pos[0], pos[1])
         self.arrow = self.scene().addPolygon(self.oof_arrow(),
                                 QtGui.QPen(QtGui.QColorConstants.Transparent),
@@ -284,15 +295,19 @@ class PositionHistory(QtWidgets.QGraphicsView):
             self.stage_pos[1] = self.stage_pos[1] - self.fov_size[1] * move_modifier
             self.stage_moved(self.stage_pos)
         if event.key() == 16777220:
-            self.painter.end()
+            "Enter: Reset drawn positions"
             self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                     QtGui.QImage.Format.Format_Grayscale8)
             self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
-            # self.stage_pos = [0, 0]
+        if event.key() == 16777221:
+            "NumPadEnter: reset position of rectangle"
+            print(self.now_rect.pos())
+            print(self.stage_offset)
             self.stage_offset = copy.deepcopy(self.stage_pos)
-            self.painter = self.define_painter()
-            self.repaint()
             self.stage_moved(self.stage_pos)
+            print(self.stage_offset)
+            print(self.stage_pos)
+            print(self.now_rect.pos())
 
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
@@ -320,7 +335,6 @@ class PositionHistory(QtWidgets.QGraphicsView):
                         viewrect.height() / scenerect.height())
         self.scale(factor, factor)
         self._zoom = 0
-
 
     def resizeEvent(self, event):
         # self.setBaseSize(self.view_size[0], self.view_size[1])
@@ -654,11 +668,11 @@ class MiniApp(QtWidgets.QWidget):
         self.setLayout(QtWidgets.QHBoxLayout())
         self.position_history = PositionHistory()
         self.layout().addWidget(self.position_history)
-        self.focus_slider = FocusSlider()
-        self.layout().addWidget(self.focus_slider)
-        # self.layout().addWidget(LiveView())
-        self.al_widget = AlignmentWidget()
-        self.layout().addWidget(self.al_widget)
+        # self.focus_slider = FocusSlider()
+        # self.layout().addWidget(self.focus_slider)
+        # # self.layout().addWidget(LiveView())
+        # self.al_widget = AlignmentWidget()
+        # self.layout().addWidget(self.al_widget)
         self.setStyleSheet("background-color:black;")
         try:
             self.monogram = MonogramCC()
