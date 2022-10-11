@@ -31,7 +31,7 @@ class MainGUI(QWidgetRestore):
             self.event_thread.stage_position_changed_event.connect(self.set_z_pos)
             # self.event_thread.new_image_event.connect(self.set_image)
             self.event_thread.acquisition_started_event.connect(self.set_bit_depth)
-            self.event_thread.settings_event.connect(self.handle_settings)
+            self.event_thread.configuration_settings_event.connect(self.handle_settings)
             self.event_thread.mda_settings_event.connect(self.handle_mda_settings)
 
             # Init the focus slider position

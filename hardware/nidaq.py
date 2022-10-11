@@ -1,6 +1,5 @@
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from MicroManagerControl import MicroManagerControl
-from data_structures import MMSettings
 import nidaqmx
 import nidaqmx.stream_writers
 import numpy as np
@@ -9,7 +8,8 @@ import copy
 import matplotlib.pyplot as plt
 
 import time
-from pymm_eventserver.event_thread import EventThread
+from pymm_eventserver.data_structures import MMSettings
+from pymm_eventserver.event_thread import EventListener
 from gui.GUIWidgets import SettingsView
 from hardware.FilterFlipper import Flippers
 
@@ -18,9 +18,9 @@ class NIDAQ(QObject):
 
     new_ni_settings = pyqtSignal(MMSettings)
 
-    def __init__(self, event_thread: EventThread, mm_interface: MicroManagerControl):
+    def __init__(self, event_thread: EventListener, mm_interface: MicroManagerControl):
         super().__init__()
-        self.event_thread = event_thread.listener
+        self.event_thread = event_thread
         self.core = self.event_thread.bridge.get_core()
         self.mm_interface = mm_interface
 
@@ -46,12 +46,13 @@ class NIDAQ(QObject):
         self.live = LiveMode(self)
 
         self.task = None
+        self.last_laser_channel = "488"
 
         self.acq.set_z_position.connect(self.mm_interface.set_z_position)
 
         self.event_thread.live_mode_event.connect(self.start_live)
-        self.event_thread.settings_event.connect(self.power_settings)
-        self.event_thread.settings_event.connect(self.live.channel_setting)
+        self.event_thread.configuration_settings_event.connect(self.power_settings)
+        self.event_thread.configuration_settings_event.connect(self.live.channel_setting)
 
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
         self.event_thread.acquisition_ended_event.connect(self.acq_done)
@@ -105,6 +106,12 @@ class NIDAQ(QObject):
             print(value)
             brightfield = True if value == "Internal Trigger" else False
             self.brightfield_control.toggle_flippers(brightfield)
+        elif device == "DLightPath":
+            if value == "iSIM":
+                print("SETTING", self.last_laser_channel)
+                self.core.set_property("DPseudoChannel", "Label", self.last_laser_channel)
+                self.event_thread.bridge.get_studio().app().refresh_gui()
+                self.live.channel_setting("DPseudoChannel", "Label", self.last_laser_channel)
         elif device == "EDA" and prop == "Label":
             eda = self.core.get_property('EDA', "Label")
             self.eda = False if eda == "Off" else True
@@ -122,7 +129,7 @@ class NIDAQ(QObject):
                 self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
                 self.event_thread.acquisition_ended_event.connect(self.acq_done)
                 self.event_thread.mda_settings_event.connect(self.new_settings)
-
+        print(device, prop, value)
         if device in ["561_AOTF", "488_AOTF", 'exposure']:
             self.live.make_daq_data()
 
@@ -148,13 +155,15 @@ class NIDAQ(QObject):
     @pyqtSlot(bool)
     def start_live(self, live_is_on):
         if live_is_on and not self.live.brightfield:
+            self.last_laser_channel = self.core.get_property("DPseudoChannel", "Label")
+            print("SAVED ", self.last_laser_channel)
             self.event_thread.mda_settings_event.disconnect(self.new_settings)
-            self.adjust_exposure()
+            # self.adjust_exposure()
         elif not live_is_on and not self.live.brightfield:
-            self.reset_exposure()
+            # self.reset_exposure()
             self.event_thread.mda_settings_event.connect(self.new_settings)
         self.live.toggle(live_is_on)
-        print(self.core.get_property("PrimeB_Camera", "Exposure"))
+        # print(self.core.get_property("PrimeB_Camera", "Exposure"))
 
     def generate_one_timepoint(self, live_channel: int = None, z_inverse: bool = False):
         if live_channel == "LED":
@@ -327,6 +336,7 @@ class Acquisition(QObject):
         self.ni = ni
         self.daq_data = None
         self.ready = self.make_daq_data()
+        self.orig_z_position = None
 
     def update_settings(self, new_settings):
         self.ready = False
