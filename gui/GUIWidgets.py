@@ -173,6 +173,8 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
         self.laser = True
         self.stage_offset = [0, 0]
+        self.zoom_factors = (0.8, 1.25)
+        self.scale(5, 5)
 
         # Enable Zoom
         self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
@@ -184,13 +186,17 @@ class PositionHistory(QtWidgets.QGraphicsView):
         # Start a Timer that checks if the laser is on and enhances at that position
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.increase_values)
-        self.timer.start(1_000)
+        self.timer.start(100)
 
 
     def stage_moved(self, new_pos):
+        print(f"Stage position {self.stage_pos}")
         self.stage_pos = new_pos
         new_pos = [x/10 for x in new_pos]
-        pos = self.rectangle_pos(list(map(operator.sub, new_pos, self.stage_offset)))
+        print(f"New position in stage_moved {new_pos}")
+        offset = [x/10 for x in self.stage_offset]
+        pos = self.rectangle_pos(list(map(operator.sub, new_pos, offset)))
+        print(f"Corrected pos {pos} with offset {offset}")
         self.rect = QtCore.QRectF(pos[0], pos[1], self.fov_size[0], self.fov_size[1])
         # self.painter.drawRect(self.rect)
         self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
@@ -296,18 +302,17 @@ class PositionHistory(QtWidgets.QGraphicsView):
             self.stage_moved(self.stage_pos)
         if event.key() == 16777220:
             "Enter: Reset drawn positions"
+            self.clear_history()
+        if event.key() == 16777221:
+            "NumPadEnter: reset position of rectangle"
+            self.clear_history()
+            self.stage_offset = copy.deepcopy(self.stage_pos)
+            self.stage_moved(self.stage_pos)
+
+    def clear_history(self):
             self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                     QtGui.QImage.Format.Format_Grayscale8)
             self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
-        if event.key() == 16777221:
-            "NumPadEnter: reset position of rectangle"
-            print(self.now_rect.pos())
-            print(self.stage_offset)
-            self.stage_offset = copy.deepcopy(self.stage_pos)
-            self.stage_moved(self.stage_pos)
-            print(self.stage_offset)
-            print(self.stage_pos)
-            print(self.now_rect.pos())
 
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
@@ -337,21 +342,8 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self._zoom = 0
 
     def resizeEvent(self, event):
-        # self.setBaseSize(self.view_size[0], self.view_size[1])
-        self.fitInView()
-        self.scale(10, 10)
         self.centerOn(self.now_rect)
-        # self.scale(10,10)
-        # self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
-        # self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
-        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-        # self.fitInView(0, 25,
-        #             #    -self.view_size[0], -self.view_size[1] + 25,
-        #                self.view_size[0], self.view_size[1] - 50,
-        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-        # self.setSceneRect(0, 25,
-        #                 #   -self.view_size[0], -self.view_size[1] + 25,
-        #                   self.view_size[0], self.view_size[1] - 50,)
+
 
 
 

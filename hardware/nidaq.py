@@ -9,7 +9,7 @@ import copy
 import matplotlib.pyplot as plt
 
 import time
-from pymm_eventserver.event_thread import EventThread
+from pymm_eventserver.event_thread import EventListener
 from gui.GUIWidgets import SettingsView
 from hardware.FilterFlipper import Flippers
 
@@ -18,9 +18,9 @@ class NIDAQ(QObject):
 
     new_ni_settings = pyqtSignal(MMSettings)
 
-    def __init__(self, event_thread: EventThread, mm_interface: MicroManagerControl):
+    def __init__(self, event_thread: EventListener, mm_interface: MicroManagerControl):
         super().__init__()
-        self.event_thread = event_thread.listener
+        self.event_thread = event_thread
         self.core = self.event_thread.bridge.get_core()
         self.mm_interface = mm_interface
 
@@ -50,8 +50,8 @@ class NIDAQ(QObject):
         self.acq.set_z_position.connect(self.mm_interface.set_z_position)
 
         self.event_thread.live_mode_event.connect(self.start_live)
-        self.event_thread.settings_event.connect(self.power_settings)
-        self.event_thread.settings_event.connect(self.live.channel_setting)
+        self.event_thread.configuration_settings_event.connect(self.power_settings)
+        self.event_thread.configuration_settings_event.connect(self.live.channel_setting)
 
         self.event_thread.acquisition_started_event.connect(self.run_acquisition_task)
         self.event_thread.acquisition_ended_event.connect(self.acq_done)
