@@ -158,7 +158,7 @@ class Galvo():
 
     def change_amp(self, amp=0.75, old=False):
         self.amp_0 = amp
-        self.daq_data = self.one_frame(old)
+        self.daq_data = self.one_frame()
 
     def center(self,pos=-0.15):
         self.task.close()

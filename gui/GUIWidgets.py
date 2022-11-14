@@ -10,11 +10,11 @@ import numpy as np
 import time
 from pyqtgraph import GraphicsLayoutWidget, ImageItem, PlotWidget, PlotCurveItem
 from threading import Thread
-from pymm_eventserver.event_thread import EventThread
-from MonogramCC import MonogramCC
+from pymm_eventserver.event_thread import EventThread, MMSettings
+from isimgui.MonogramCC import MonogramCC
 from scipy.ndimage import center_of_mass
+import qimage2ndarray
 
-from data_structures import MMSettings
 
 # Adjust for different screen sizes
 QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
@@ -23,6 +23,7 @@ class Colors(object):
     """ Defines colors for easy access in all widgets. """
     def __init__(self):
         self.blue = QtGui.QColor(25, 180, 210, alpha=150)
+        self.red = QtGui.QColor(220, 20, 60, alpha=150)
 
 
 class FocusSlider(QtWidgets.QSlider):
@@ -146,11 +147,21 @@ class PositionHistory(QtWidgets.QGraphicsView):
                                 QtGui.QImage.Format.Format_RGB32)
 
         self.my_pixmap = self.scene().addPixmap(QtGui.QPixmap.fromImage(self.map))
+        self.my_pixmap.setZValue(-100)
         self.fitInView()
+
+        # Circle giving relation to coverslip
+        diameter = self.view_size[0]/2
+        self.circle = self.scene().addEllipse(QtCore.QRectF(0, 0, diameter, diameter),
+                                              QtGui.QPen(Colors().red,3),
+                                              QtGui.QBrush(QtGui.QColorConstants.Transparent))
+        self.circle.setPos(self.sample_size[0]/2 - diameter/2, self.sample_size[1]/2 - diameter/2)
+        self.circle.setZValue(-99)
         self.now_rect = self.scene().addRect(QtCore.QRectF(0, 0,
                                                            self.fov_size[0], self.fov_size[1]),
                                              QtGui.QPen(Colors().blue,1),
                                              QtGui.QBrush(QtGui.QColorConstants.Transparent))
+        self.now_rect.setZValue(100)
         self.now_rect.setPos(pos[0], pos[1])
         self.arrow = self.scene().addPolygon(self.oof_arrow(),
                                 QtGui.QPen(QtGui.QColorConstants.Transparent),
@@ -162,6 +173,8 @@ class PositionHistory(QtWidgets.QGraphicsView):
 
         self.laser = True
         self.stage_offset = [0, 0]
+        self.zoom_factors = (0.8, 1.25)
+        self.scale(5, 5)
 
         # Enable Zoom
         self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
@@ -173,13 +186,17 @@ class PositionHistory(QtWidgets.QGraphicsView):
         # Start a Timer that checks if the laser is on and enhances at that position
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.increase_values)
-        self.timer.start(1_000)
+        self.timer.start(500)
 
 
     def stage_moved(self, new_pos):
+        print(f"Stage position {self.stage_pos}")
         self.stage_pos = new_pos
         new_pos = [x/10 for x in new_pos]
-        pos = self.rectangle_pos(list(map(operator.sub, new_pos, self.stage_offset)))
+        print(f"New position in stage_moved {new_pos}")
+        offset = [x/10 for x in self.stage_offset]
+        pos = self.rectangle_pos(list(map(operator.sub, new_pos, offset)))
+        print(f"Corrected pos {pos} with offset {offset}")
         self.rect = QtCore.QRectF(pos[0], pos[1], self.fov_size[0], self.fov_size[1])
         # self.painter.drawRect(self.rect)
         self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
@@ -284,15 +301,18 @@ class PositionHistory(QtWidgets.QGraphicsView):
             self.stage_pos[1] = self.stage_pos[1] - self.fov_size[1] * move_modifier
             self.stage_moved(self.stage_pos)
         if event.key() == 16777220:
-            self.painter.end()
+            "Enter: Reset drawn positions"
+            self.clear_history()
+        if event.key() == 16777221:
+            "NumPadEnter: reset position of rectangle"
+            self.clear_history()
+            self.stage_offset = copy.deepcopy(self.stage_pos)
+            self.stage_moved(self.stage_pos)
+
+    def clear_history(self):
             self.map = QtGui.QImage(self.sample_size[0], self.sample_size[1],
                                     QtGui.QImage.Format.Format_Grayscale8)
             self.my_pixmap.setPixmap(QtGui.QPixmap.fromImage(self.map))
-            # self.stage_pos = [0, 0]
-            self.stage_offset = copy.deepcopy(self.stage_pos)
-            self.painter = self.define_painter()
-            self.repaint()
-            self.stage_moved(self.stage_pos)
 
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
@@ -321,23 +341,9 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.scale(factor, factor)
         self._zoom = 0
 
-
     def resizeEvent(self, event):
-        # self.setBaseSize(self.view_size[0], self.view_size[1])
-        self.fitInView()
-        self.scale(10, 10)
         self.centerOn(self.now_rect)
-        # self.scale(10,10)
-        # self.setSceneRect(0, 25, self.view_size[0], self.view_size[1] - 50)
-        # self.fitInView(0, 25, self.view_size[0], self.view_size[1] - 50,
-        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-        # self.fitInView(0, 25,
-        #             #    -self.view_size[0], -self.view_size[1] + 25,
-        #                self.view_size[0], self.view_size[1] - 50,
-        #                QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-        # self.setSceneRect(0, 25,
-        #                 #   -self.view_size[0], -self.view_size[1] + 25,
-        #                   self.view_size[0], self.view_size[1] - 50,)
+
 
 
 
@@ -455,7 +461,7 @@ class AlignmentView(GraphicsLayoutWidget):
         max_value = 1000000
 
         perf1 = time.perf_counter()
-        print("Part 1:", perf1 - perf0)
+        # print("Part 1:", perf1 - perf0)
 
         self.old_pointers = self.pointers
         self.pointers = []
@@ -477,7 +483,7 @@ class AlignmentView(GraphicsLayoutWidget):
         self.fit_number = 0
         self.fit_timer.start()
         perf2 = time.perf_counter()
-        print("Part 2:", perf2 - perf1)
+        # print("Part 2:", perf2 - perf1)
 
     def fit_peaks(self):
         data = np.copy(self.raw_data)
@@ -654,11 +660,11 @@ class MiniApp(QtWidgets.QWidget):
         self.setLayout(QtWidgets.QHBoxLayout())
         self.position_history = PositionHistory()
         self.layout().addWidget(self.position_history)
-        self.focus_slider = FocusSlider()
-        self.layout().addWidget(self.focus_slider)
-        # self.layout().addWidget(LiveView())
-        self.al_widget = AlignmentWidget()
-        self.layout().addWidget(self.al_widget)
+        # self.focus_slider = FocusSlider()
+        # self.layout().addWidget(self.focus_slider)
+        # # self.layout().addWidget(LiveView())
+        # self.al_widget = AlignmentWidget()
+        # self.layout().addWidget(self.al_widget)
         self.setStyleSheet("background-color:black;")
         try:
             self.monogram = MonogramCC()
