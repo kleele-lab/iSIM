@@ -1,5 +1,4 @@
 from MicroManagerControl import MicroManagerControl
-from data_structures import MMSettings
 from gui.GUIWidgets import SettingsView
 import sys
 from PyQt5 import QtWidgets
