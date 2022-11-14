@@ -73,6 +73,7 @@ class NIDAQ(QObject):
         try:
             self.cycle_time = new_settings.channels['488']['exposure']
         except KeyError:
+            print("WARNING: Empty channels received, setting exposure time to 100 ms.")
             self.cycle_time = 100
 
         self.sweeps_per_frame = new_settings.sweeps_per_frame
@@ -86,7 +87,10 @@ class NIDAQ(QObject):
 
     @pyqtSlot(MMSettings)
     def new_settings(self, new_settings: MMSettings):
-        self.settings = new_settings
+        if len(new_settings.channels) == 0:
+            print("WARNING: Empty channels dict! Not setting")
+        else:
+            self.settings = new_settings
         self.update_settings(new_settings)
         self.acq.update_settings(new_settings)
         self.live.update_settings(new_settings)
@@ -130,7 +134,10 @@ class NIDAQ(QObject):
     def run_acquisition_task(self, _):
         if not self.eda:
             self.adjust_exposure()
-            self.event_thread.mda_settings_event.disconnect(self.new_settings)
+            try:
+                self.event_thread.mda_settings_event.disconnect(self.new_settings)
+            except TypeError:
+                print("WARNING: mda_settings disconnect failed, did last acq end normal?")
             time.sleep(0.5)
             self.acq.run_acquisition()
 
@@ -139,7 +146,7 @@ class NIDAQ(QObject):
         self.reset_exposure()
         self.event_thread.mda_settings_event.connect(self.new_settings)
         self.acq.set_z_position.emit(self.acq.orig_z_position)
-        self.event_thread.mda_settings_event.connect(self.new_settings)
+        # self.event_thread.mda_settings_event.connect(self.new_settings)
         time.sleep(1)
         self.init_task()
         stop_data = np.asarray([[self.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
@@ -330,7 +337,11 @@ class Acquisition(QObject):
 
     def update_settings(self, new_settings):
         self.ready = False
-        self.settings = new_settings
+        #TODO: Check what is actually going on here if empty channels come in
+        if len(new_settings.channels) == 0:
+            print("WARNING: empty channels dict!")
+        else:
+            self.settings = new_settings
         self.make_daq_data()
         self.ni.init_task()
         self.ni.task.timing.cfg_samp_clk_timing(rate=self.ni.smpl_rate,

@@ -186,7 +186,7 @@ class PositionHistory(QtWidgets.QGraphicsView):
         # Start a Timer that checks if the laser is on and enhances at that position
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.increase_values)
-        self.timer.start(100)
+        self.timer.start(500)
 
 
     def stage_moved(self, new_pos):
@@ -461,7 +461,7 @@ class AlignmentView(GraphicsLayoutWidget):
         max_value = 1000000
 
         perf1 = time.perf_counter()
-        print("Part 1:", perf1 - perf0)
+        # print("Part 1:", perf1 - perf0)
 
         self.old_pointers = self.pointers
         self.pointers = []
@@ -483,7 +483,7 @@ class AlignmentView(GraphicsLayoutWidget):
         self.fit_number = 0
         self.fit_timer.start()
         perf2 = time.perf_counter()
-        print("Part 2:", perf2 - perf1)
+        # print("Part 2:", perf2 - perf1)
 
     def fit_peaks(self):
         data = np.copy(self.raw_data)
