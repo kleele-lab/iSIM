@@ -149,4 +149,4 @@ def main(control:bool = False):
 
 
 if __name__ == '__main__':
-    main()
+    main(True)

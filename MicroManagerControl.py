@@ -1,5 +1,5 @@
 from zlib import DEF_BUF_SIZE
-from pycromanager import Bridge
+from pycromanager import Core, Studio
 from PyQt5.QtCore import QObject, QTimer, pyqtSlot
 from PyQt5.QtGui import QImage
 
@@ -13,13 +13,13 @@ class MicroManagerControl(QObject):
     def __init__(self, event_thread=None):
         super().__init__()
         if event_thread is None:
-            self.bridge = Bridge()
+            self.core = Core()
+            self.studio = Studio()
         else:
             self.event_thread = event_thread
-            self.bridge = event_thread.bridge
-        self.studio = self.bridge.get_studio()
+            self.studio = event_thread.studio
+            self.core = event_thread.core
         self.data = self.studio.data
-        self.core = self.bridge.get_core()
         self.live = self.studio.get_snap_live_manager()
         self.image_format = QImage.Format.Format_Grayscale16
         self.LUT = []
@@ -65,7 +65,8 @@ class MicroManagerControl(QObject):
         return qimage
 
     def close(self):
-        self.bridge.close()
+        pass
+        # self.bridge.close()
 
 
 if __name__ == '__main__':

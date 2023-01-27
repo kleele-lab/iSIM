@@ -14,6 +14,7 @@ from pymm_eventserver.event_thread import EventThread, MMSettings
 from isimgui.MonogramCC import MonogramCC
 from scipy.ndimage import center_of_mass
 import qimage2ndarray
+import qdarkstyle
 
 
 # Adjust for different screen sizes
@@ -345,8 +346,41 @@ class PositionHistory(QtWidgets.QGraphicsView):
         self.centerOn(self.now_rect)
 
 
+class TwitcherGUI(QtWidgets.QGraphicsView):
+    new_settings = QtCore.pyqtSignal(str, str, str)
 
+    def __init__(self):
+        """Set up the PyQt GUI with all the parameters needed for interpretation."""
+        super().__init__()
 
+        self.setStyleSheet(qdarkstyle.load_stylesheet(qt_api="pyqt5"))
+        self.freq_input = QtWidgets.QLineEdit()
+        self.amp_input = QtWidgets.QLineEdit()
+
+        self.freq_input.setText(str(2400))
+        self.amp_input.setText(str(0.07))
+
+        self.freq_input.editingFinished.connect(self.send_freq)
+        self.amp_input.editingFinished.connect(self.send_amp)
+
+        param_layout = QtWidgets.QFormLayout(self)
+        param_layout.addRow(QtWidgets.QLabel("Twitchers"))
+        param_layout.addRow(QtWidgets.QLabel("Frequency"))
+        param_layout.addRow("Frequency", self.freq_input)
+        param_layout.addRow(QtWidgets.QLabel("Amplitude"))
+        param_layout.addRow("Amplitude", self.amp_input)
+
+    def send_freq(self):
+        print("sending new frequency value", self.freq_input.text())
+        self.new_settings.emit("twitcher", "freq", self.freq_input.text())
+
+    def send_amp(self):
+        self.new_settings.emit("twitcher", "amp", self.amp_input.text())
+
+    def stylesheet(_):
+        with open('assets/FocusSlider_style.txt') as f:
+            style = f.read()
+        return style
 
 class LiveView(QtWidgets.QGraphicsView):
     """ Mirror the last image received by Micro-Manager in a Python window """
@@ -373,7 +407,7 @@ class AlignmentWidget(QtWidgets.QWidget):
         width = height = 140
         self.window_offset = 62
         super().__init__()
-        self.angle = -0.0665
+        self.angle = -0.072# 221128: changed from -0.0665
         self.pixmap = QtGui.QPixmap(width,height)
         grid = QtWidgets.QGridLayout(self)
         top_bottom_offset = np.tan(abs(self.angle))*(1024-height/2) - self.window_offset
@@ -544,7 +578,7 @@ class LineItem(GraphicsObject):
         self.shape = shape
         self.center = center
         self.picture = QtGui.QPicture()
-        self.color = '#00FFFF'
+        self.color = '#008585'
         self.generatePicture()
         self.setZValue(90)
 
@@ -554,7 +588,7 @@ class LineItem(GraphicsObject):
         the ViewBox for example to ensure always the same apparent size. """
         size = self.shape
         painter = QtGui.QPainter(self.picture)
-        painter.setPen(mkPen(color=self.color, width=2))
+        painter.setPen(mkPen(color=self.color, width=4))
         dx = np.tan(self.angle)*size[1]/2
         painter.drawLine(-dx, size[1], +dx, 0)
         if self.center:

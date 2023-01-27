@@ -4,12 +4,12 @@ from hardware._devices import DAQSettings
 
 @dataclass
 class NIDAQSettings(DAQSettings):
-    sampling_rate: int = 500
-    post_delay: float = 0.03
+    sampling_rate: int = 4000
+    post_delay: float = 0.0
     pre_delay: float = 0.0
     sweeps_per_frame: int = 1
     cycle_time: int = 100  # ms
-    camera_readout_time: int = 0.03 # s
+    camera_readout_time: int = 0.029 # s
 
     def __post_init__(self):
         self.frame_rate = 1/(self.cycle_time*self.sweeps_per_frame/1000)

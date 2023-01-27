@@ -28,7 +28,7 @@ class MMSettings:
     interval_ms: int = 1000
 
     pre_delay: float = 0.00
-    post_delay: float = 0.00
+    post_delay: float = 0.03
 
     acq_order_mode: int = 0
 

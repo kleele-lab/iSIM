@@ -2,9 +2,11 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 
 
 class QWidgetRestore(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, name: str = None):
         super().__init__()
-        self.settings = QtCore.QSettings( 'EDA', self.__class__.__name__)
+        if name is None:
+            name = self.__class__.__name__
+        self.settings = QtCore.QSettings( 'EDA', name)
         # Initial window size/pos last saved. Use default values for first time
         self.resize(self.settings.value("size", QtCore.QSize(270, 225)))
         self.move(self.settings.value("pos", QtCore.QPoint(50, 50)))

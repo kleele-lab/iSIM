@@ -1,7 +1,7 @@
 import MicroManagerControl
 from PyQt5.QtCore import pyqtSlot
 from gui.qt_classes import QWidgetRestore
-from gui.GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean
+from gui.GUIWidgets import LiveView, PositionHistory, FocusSlider, AlignmentWidget, RunningMean, TwitcherGUI
 from pymm_eventserver.event_thread import EventThread
 from MonogramCC import MonogramCC
 from PyQt5 import QtWidgets, QtCore
@@ -17,11 +17,13 @@ class MainGUI(QWidgetRestore):
 
     def __init__(self, parent=None, monogram:bool = True, event_thread = None,
                  alignment: bool = False):
-        super(MainGUI, self).__init__()
-        self.focus_slider = FocusSlider()
         if not alignment:
+            super(MainGUI, self).__init__(name="MainGUI")
+            self.focus_slider = FocusSlider()
             self.position_history = PositionHistory()
+            self.twitcher_gui = TwitcherGUI()
         else:
+            super(MainGUI, self).__init__(name="Alignment")
             self.mean = RunningMean()
             self.alignment_widget = AlignmentWidget()
             self.alignment_widget.setFixedWidth(1800)
@@ -39,10 +41,11 @@ class MainGUI(QWidgetRestore):
 
             self.mm_interface = MicroManagerControl.MicroManagerControl(event_thread=self.event_thread)
             # Init the focus slider position
-            self.focus_slider.setValue(self.event_thread.bridge.get_core().get_position()*100)
-            self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
             if not alignment:
+                self.focus_slider.setValue(self.event_thread.core.get_position()*100)
+                self.focus_slider.z_stage_position_python.connect(self.set_z_position_python)
                 self.position_history.xy_stage_position_python.connect(self.set_xy_position_python)
+                self.twitcher_gui.new_settings.connect(self.handle_twitcher_settings)
             else:
                 self.event_thread.new_image_event.connect(self.mean.add_image)
                 self.event_thread.new_image_event.connect(self.alignment_widget.add_image)
@@ -62,9 +65,10 @@ class MainGUI(QWidgetRestore):
             print(error)
 
         self.setLayout(QtWidgets.QHBoxLayout())
-        self.layout().addWidget(self.focus_slider)
         if not alignment:
+            self.layout().addWidget(self.focus_slider)
             self.layout().addWidget(self.position_history)
+            self.layout().addWidget(self.twitcher_gui)
         else:
             self.layout().addWidget(self.mean)
             self.layout().addWidget(self.alignment_widget)
@@ -107,6 +111,10 @@ class MainGUI(QWidgetRestore):
             self.position_history.laser = float(value)
             print(self.position_history.laser)
 
+    def handle_twitcher_settings(self, device, deviceProperty, value):
+        if device == "twitcher":
+            self.event_thread.configuration_settings_event.emit(device, deviceProperty, value)
+
     @pyqtSlot(object)
     def handle_mda_settings(self, settings):
         pass
@@ -114,10 +122,11 @@ class MainGUI(QWidgetRestore):
     def closeEvent(self, event):
         try:
             self.event_thread.stop()
+            self.monogram.thread.quit()
         except AttributeError:
             # Event Thread was not added in the first place
             pass
-        self.monogram.thread.quit()
+
         self.mm_interface.close()
         super().closeEvent(event)
         event.accept()

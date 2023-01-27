@@ -2,25 +2,41 @@ import nidaqmx
 import nidaqmx.stream_writers
 import numpy as np
 # import hardware.FilterFlipper as FilterFlipper
-
+import weakref
 import matplotlib.pyplot as plt
-
-from pycromanager import Core, Studio
+from hardware._devices import NIController, DAQSettings, DAQDevice
 from hardware.nidaq_components.settings import NIDAQSettings
-from hardware.nidaq_components.devices import Camera, Galvo
+from hardware.nidaq_components.devices import Camera, Galvo, Twitcher, LED, AOTF
 
+GALVO_CENTER = -0.075
+TWITCHER_CENTER = 5
 
-def aotf(transmit:bool = True):
+def aotf(power:float = 10, transmit:bool = True):
     value = 10 if transmit else 0
+    power = power if transmit else 0
     with nidaqmx.Task() as task:
         task.ao_channels.add_ao_voltage_chan("Dev1/ao3")
         task.ao_channels.add_ao_voltage_chan("Dev1/ao4")
-        task.write([value,value], auto_start=True)
+        task.write([value, power], auto_start=True)
 
 
-def center_mirror(pos:float = -0.3):
+def center_mirrors():
+    # 221121: Changed default from -0.3 to 0.075
     with nidaqmx.Task() as task:
         task.ao_channels.add_ao_voltage_chan("Dev1/ao0")
+        task.write(GALVO_CENTER, auto_start=True)
+    with nidaqmx.Task() as task:
+        task.ao_channels.add_ao_voltage_chan("Dev1/ao7")
+        task.write(TWITCHER_CENTER, auto_start=True)
+
+def center_galvo(pos: float = GALVO_CENTER):
+    with nidaqmx.Task() as task:
+        task.ao_channels.add_ao_voltage_chan("Dev1/ao0")
+        task.write(pos, auto_start=True)
+
+def center_twitchers(pos: float = TWITCHER_CENTER):
+    with nidaqmx.Task() as task:
+        task.ao_channels.add_ao_voltage_chan("Dev1/ao7")
         task.write(pos, auto_start=True)
 
 def led_on(power=10):
@@ -46,11 +62,67 @@ def makePulse(start, end, offset):
     return pulse
 
 
-class NI():
-    def __init__(self, settings: NIDAQSettings = NIDAQSettings()):
+class NI(NIController):
+    def __init__(self, settings: NIDAQSettings = NIDAQSettings(cycle_time=100,sampling_rate=8400, camera_readout_time=0.0229),
+                 camera: DAQDevice = Camera, galvo: DAQDevice = Galvo,
+                 twitcher: DAQDevice = Twitcher, led: DAQDevice = LED, aotf: DAQDevice = AOTF):
         self.settings = settings
-        self.camera = Camera()
-        self.galvo = Galvo()
+        self.camera = camera(settings)
+        self.galvo = galvo(settings)
+        self.twitcher = twitcher(settings)
+        self.led = led(settings)
+        self.aotf = aotf(settings)
+        self.task_name = "isim_align_v0_10"
+        self.channels = ['Dev1/ao0', 'Dev1/ao2','Dev1/ao7','Dev1/ao6', 'Dev1/ao3', 'Dev1/ao4', 'Dev1/ao5'] #galvo, camera, twitcher
+
+        self.stop_data = np.asarray([[self.galvo.offset, 0, (-self.twitcher.amp) + self.twitcher.offset, 0,
+                                      0, self.aotf.power_488/10, 0]]).astype(np.float64).transpose()
+        self.stop_data = np.tile(self.stop_data, self.one_sequence().shape[1])
+        return super()._init()
+
+    def one_sequence(self):
+        galvo_frame = self.galvo.one_frame(self.settings)
+        # galvo_frame = (self.twitcher.one_frame(self.settings)-5)*0.1
+        # galvo_frame = np.ones(galvo_frame.shape)*self.galvo.offset_0
+        camera_data = self.camera.one_frame(self.settings)
+        twitch_data = self.twitcher.one_frame(self.settings)
+        led_data = self.led.one_frame(self.settings)
+        # twitch_data = np.ones(twitch_data.shape)*5
+        aotf_data = self.aotf.one_frame(self.settings)
+        self.daq_data = np.vstack((galvo_frame, camera_data, twitch_data, led_data, aotf_data))
+        no_frames = 5
+        self.daq_data = np.tile(self.daq_data, no_frames)
+        print(self.daq_data.shape)
+        return self.daq_data
+
+    def cleanup(self):
+        super().cleanup()
+        center_mirrors()
+
+
+
+# This does not work as we can't have multiple task running on the same card. There is only one
+# sample clock on this card, so different sampling_rates wouldn't work anyways.
+# class Twitch_Control(NIController):
+#     def __init__(self, settings: NIDAQSettings = NIDAQSettings(sampling_rate = 5000)):
+#         self.settings = settings
+#         self.twitcher = Twitcher(settings)
+#         self.task_name = "isim_twitch_align"
+#         self.channels = ['Dev1/ao6']
+
+#         self.stop_data = np.zeros((1,5000)).astype(np.float64)
+#         return super()._init()
+
+#     def one_sequence(self):
+#         frame = self.twitcher.one_frame()
+#         self.daq_data = np.asarray(frame)
+#         no_frames = 5
+#         self.daq_data = np.tile(self.daq_data, no_frames)
+#         print(self.daq_data.shape)
+#         return self.daq_data
+
+
+
 
 # class Galvo():
 

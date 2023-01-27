@@ -37,7 +37,7 @@ def alignment():
 
     ni = NIDAQ(event_listener, mm_interface)
     settings_view = SettingsView(event_listener)
-    miniapp = MainGUI(event_thread=event_listener, alignment=True)
+    miniapp = MainGUI(event_thread=event_listener, alignment=True, monogram=False)
     miniapp.show()
 
     sys.exit(app.exec_())

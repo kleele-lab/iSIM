@@ -5,6 +5,7 @@ import nidaqmx.stream_writers
 import numpy as np
 import copy
 
+from scipy import ndimage
 import matplotlib.pyplot as plt
 
 import time
@@ -12,6 +13,8 @@ from pymm_eventserver.data_structures import MMSettings
 from pymm_eventserver.event_thread import EventListener
 from gui.GUIWidgets import SettingsView
 from hardware.FilterFlipper import Flippers
+from alignment import NI
+from hardware.nidaq_components.settings import NIDAQSettings
 
 
 class NIDAQ(QObject):
@@ -21,19 +24,20 @@ class NIDAQ(QObject):
     def __init__(self, event_thread: EventListener, mm_interface: MicroManagerControl):
         super().__init__()
         self.event_thread = event_thread
-        self.core = self.event_thread.bridge.get_core()
+        self.core = self.event_thread.core
+        self.studio = self.event_thread.studio
         self.mm_interface = mm_interface
 
         #Get the EDA setting to only do things when EDA is off, otherwise the daq_actuator is active
         eda = self.core.get_property('EDA', "Label")
         self.eda = False if eda == "Off" else True
 
-        settings = self.event_thread.bridge.get_studio().acquisitions().get_acquisition_settings()
+        settings = self.studio.acquisitions().get_acquisition_settings()
         self.settings = MMSettings(settings)
 
         self.system = nidaqmx.system.System.local()
 
-        self.sampling_rate = 500
+        self.sampling_rate = 9600
         self.update_settings(self.settings)
 
         self.galvo = Galvo(self)
@@ -41,6 +45,8 @@ class NIDAQ(QObject):
         self.camera = Camera(self)
         self.aotf = AOTF(self)
         self.brightfield_control = Brightfield(self)
+        self.led = LED(self)
+        self.twitcher = Twitcher(self)
 
         self.acq = Acquisition(self, self.settings)
         self.live = LiveMode(self)
@@ -69,6 +75,8 @@ class NIDAQ(QObject):
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao3') # aotf blanking channel
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao4') # aotf 488 channel
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao5') # aotf 561 channel
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao6') # LED channel
+        self.task.ao_channels.add_ao_voltage_chan('Dev1/ao7') # twitcher channel
 
     def update_settings(self, new_settings):
         try:
@@ -92,6 +100,8 @@ class NIDAQ(QObject):
             print("WARNING: Empty channels dict! Not setting")
         else:
             self.settings = new_settings
+            new_settings.post_delay = 0.03
+            self.settings.post_delay = 0.03
         self.update_settings(new_settings)
         self.acq.update_settings(new_settings)
         self.live.update_settings(new_settings)
@@ -99,6 +109,7 @@ class NIDAQ(QObject):
 
     @pyqtSlot(str, str, str)
     def power_settings(self, device, prop, value):
+        print(device)
         if device == "488_AOTF" and prop == r"Power (% of max)":
             self.aotf.power_488 = float(value)
         elif device == "561_AOTF" and prop == r"Power (% of max)":
@@ -114,8 +125,14 @@ class NIDAQ(QObject):
             if value == "iSIM":
                 print("SETTING", self.last_laser_channel)
                 self.core.set_property("DPseudoChannel", "Label", self.last_laser_channel)
-                self.event_thread.bridge.get_studio().app().refresh_gui()
+                self.event_thread.studio.get_application().refresh_gui()
                 self.live.channel_setting("DPseudoChannel", "Label", self.last_laser_channel)
+        elif device == "twitcher":
+            print("NEW twitcher settings")
+            if prop == "amp":
+                self.twitcher.amp = float(value)
+            elif prop == "freq":
+                self.twitcher.freq = int(value)
         elif device == "EDA" and prop == "Label":
             eda = self.core.get_property('EDA', "Label")
             self.eda = False if eda == "Off" else True
@@ -139,8 +156,10 @@ class NIDAQ(QObject):
 
     @pyqtSlot(object)
     def run_acquisition_task(self, _):
+        # print("Running acquisition task")
+        # settings = MMSettings(java_settings=_.get_settings())
         if not self.eda:
-            self.adjust_exposure()
+            # self.adjust_exposure()
             try:
                 self.event_thread.mda_settings_event.disconnect(self.new_settings)
             except TypeError:
@@ -150,13 +169,13 @@ class NIDAQ(QObject):
 
     @pyqtSlot(object)
     def acq_done(self, _):
-        self.reset_exposure()
+        # self.reset_exposure()
         self.event_thread.mda_settings_event.connect(self.new_settings)
         self.acq.set_z_position.emit(self.acq.orig_z_position)
         # self.event_thread.mda_settings_event.connect(self.new_settings)
         time.sleep(1)
         self.init_task()
-        stop_data = np.asarray([[self.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
+        stop_data = np.asarray([[self.galvo.parking_voltage, 0, 0, 0, 0, 0, 0, 5]]).astype(np.float64).transpose()
         self.task.write(stop_data)
 
     @pyqtSlot(bool)
@@ -186,15 +205,20 @@ class NIDAQ(QObject):
             stage = self.stage.one_frame(self.settings, 0)
             aotf = self.aotf.one_frame(self.settings, self.settings.channels[channel_name])
             camera = self.camera.one_frame(self.settings)
-            timepoint = np.vstack((galvo, stage, camera, aotf))
+            led = self.led.one_frame(self.settings)
+            twitcher = self.twitcher.one_frame(self.settings)
+            timepoint = np.vstack((galvo, stage, camera, aotf, led, twitcher))
             self.settings.post_delay = old_post_delay
         else:
             galvo = self.galvo.one_frame(self.settings)
+            led = self.led.one_frame(self.settings)
+            twitcher = self.twitcher.one_frame(self.settings)
             camera = self.camera.one_frame(self.settings)
             if self.settings.acq_order_mode == 1:
-                timepoint = self.slices_then_channels(galvo, camera)
+                timepoint = self.slices_then_channels(galvo, camera, led, twitcher)
             elif self.settings.acq_order_mode == 0:
-                timepoint = self.channels_then_slices(galvo, camera, z_inverse)
+                timepoint = self.channels_then_slices(galvo, camera, led, twitcher, z_inverse)
+        print(timepoint.shape)
         return timepoint
 
     def get_slices(self):
@@ -203,7 +227,7 @@ class NIDAQ(QObject):
         iter_slices_rev.reverse()
         return iter_slices, iter_slices_rev
 
-    def channels_then_slices(self, galvo, camera, z_inverse):
+    def channels_then_slices(self, galvo, camera, led, twitcher, z_inverse):
         iter_slices, iter_slices_rev = self.get_slices()
 
         slices_data = []
@@ -215,13 +239,13 @@ class NIDAQ(QObject):
                     aotf = self.aotf.one_frame(self.settings, channel)
                     offset = sli - self.settings.slices[0]
                     stage = self.stage.one_frame(self.settings, offset)
-                    data = np.vstack((galvo, stage, camera, aotf))
+                    data = np.vstack((galvo, stage, camera, aotf, led, twitcher))
                     channels_data.append(data)
             data = np.hstack(channels_data)
             slices_data.append(data)
         return np.hstack(slices_data)
 
-    def slices_then_channels(self, galvo, camera):
+    def slices_then_channels(self, galvo, camera, led, twitcher):
         iter_slices, iter_slices_rev = self.get_slices()
         z_iter = 0
         channels_data = []
@@ -233,7 +257,7 @@ class NIDAQ(QObject):
                     aotf = self.aotf.one_frame(self.settings, channel)
                     offset = sli - self.settings.slices[0]
                     stage = self.stage.one_frame(self.settings, offset)
-                    data = np.vstack((galvo, stage, camera, aotf))
+                    data = np.vstack((galvo, stage, camera, aotf, led, twitcher))
                     slices_data.append(data)
                 z_iter += 1
                 data = np.hstack(slices_data)
@@ -253,16 +277,25 @@ class NIDAQ(QObject):
         self.core.set_property("PrimeB_Camera", "Exposure", self.cycle_time)
         self.core.set_exposure( self.cycle_time)
 
+    def plot(self, all: bool = False):
+        if not all:
+            for device in self.generate_one_timepoint():
+                plt.plot(device)
+        else:
+            for device in self.acq.daq_data:
+                plt.plot(device)
+
+
 class LiveMode(QObject):
     def __init__(self, ni:NIDAQ):
         super().__init__()
         self.ni = ni
-        core = self.ni.event_thread.bridge.get_core()
+        core = self.ni.core
         self.channel_name= core.get_property('DPseudoChannel', "Label")
         self.ready = self.make_daq_data()
         self.stop = False
-        self.brightfield = core.get_property('PrimeB_Camera', "TriggerMode")
-        self.brightfield = (self.brightfield == "Internal Trigger")
+        self.brightfield = core.get_property('DPseudoChannel', "Label")
+        self.brightfield = (self.brightfield == "LED")
         self.ni.brightfield_control.flippers.brightfield(self.brightfield)
 
     @pyqtSlot(str, str, str)
@@ -270,8 +303,9 @@ class LiveMode(QObject):
         if device == "DPseudoChannel" and prop == "Label":
             self.channel_name = value
             self.make_daq_data()
-        if device == "PrimeB_Camera" and prop == "TriggerMode":
-            self.brightfield = (value == "Internal Trigger")
+        if device == "DPseudoChannel" and prop == "Label":
+            self.brightfield = (value == "LED")
+
 
     def update_settings(self, new_settings):
         self.ni.init_task()
@@ -282,7 +316,7 @@ class LiveMode(QObject):
         self.ni.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.ni.task.out_stream,
                                                                          auto_start=False)
         self.ni.stream.write_many_sample(self.daq_data)
-        self.ni.task.register_every_n_samples_transferred_from_buffer_event(self.daq_data.shape[1],
+        self.ni.task.register_every_n_samples_transferred_from_buffer_event(self.daq_data.shape[1]//2,
                                                                             self.get_new_data)
 
     def get_new_data(self, task_handle, every_n_samples_event_type, number_of_samples, callback_data):
@@ -299,11 +333,11 @@ class LiveMode(QObject):
         except KeyError:
             print("WARNING: are there channels in the MDA window?")
             return False
-        no_frames = np.max([1, round(200/self.ni.cycle_time)])
+        no_frames = np.max([1, round(1000/self.ni.cycle_time)])
         print("N Frames ", no_frames)
         self.daq_data = np.tile(timepoint, no_frames)
         self.stop_data = np.asarray(
-                [[self.ni.galvo.parking_voltage, 0, 0, 0, 0, 0]]).astype(np.float64).transpose()
+                [[self.ni.galvo.parking_voltage, 0, 0, 0, 0, 0, 0, 5]]).astype(np.float64).transpose()
         print(self.daq_data.shape[1])
         return True
 
@@ -314,8 +348,23 @@ class LiveMode(QObject):
     def toggle(self, live_is_on):
         print(live_is_on)
         if self.brightfield:
-            self.ni.brightfield_control.led(live_is_on, 0.3)
-            return
+            if live_is_on:
+                # self.ni.brightfield_control.led(live_is_on, 0.3)
+                core = self.ni.event_thread.core
+                readout_time = core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+                readout_time = float(readout_time)*1E-9
+                print(self.ni.settings.channels['488']["exposure"])
+                self.brightfield_ni = NI(settings=NIDAQSettings(cycle_time = self.ni.settings.channels['488']["exposure"],
+                sampling_rate = 9000, camera_readout_time=0.023))
+                self.brightfield_ni.aotf.power_488 = 0
+                self.brightfield_ni.galvo.amp = 0.233
+                self.brightfield_ni.daq_data = self.brightfield_ni.one_sequence()
+                self.brightfield_ni.start()
+                return
+            else:
+                self.brightfield_ni.stop()
+                time.sleep(1)
+                self.brightfield_ni.cleanup()
 
         if live_is_on:
             if not self.ready:
@@ -365,8 +414,9 @@ class Acquisition(QObject):
     def make_daq_data(self):
         try:
             timepoint = self.ni.generate_one_timepoint()
-        except ValueError:
+        except ValueError as e:
             print("WARNING: Are the channels in the MDA pannel?")
+            print(e)
             return False
         timepoint = self.add_interval(timepoint)
         # Make zstage go up/down over two timepoints
@@ -390,21 +440,29 @@ class Acquisition(QObject):
         if self.settings.interval_ms > 0:
             missing_samples = round(self.ni.smpl_rate * self.settings.interval_ms/1000-timepoint.shape[1])
             galvo = np.ones(missing_samples) * self.ni.galvo.parking_voltage
-            rest = np.zeros((timepoint.shape[0] - 1, missing_samples))
+            last_data = np.expand_dims(timepoint[1:,-1], 1)
+            rest = np.tile(last_data, missing_samples)  # np.zeros((timepoint.shape[0] - 1, missing_samples))
             delay = np.vstack([galvo, rest])
             timepoint = np.hstack([timepoint, delay])
         print("INTERVAL: ", self.settings.interval_ms)
         return timepoint
 
-    def run_acquisition(self):
-        self.update_settings(self.settings)
+    def run_acquisition(self, settings=None):
+        if settings is None:
+            self.update_settings(self.settings)
+            my_settings = self.settings
+        else:
+            print("Using directly transmitted settings")
+            self.update_settings(settings)
+            my_settings = settings
         self.orig_z_position = self.ni.core.get_position()
-        if self.settings.use_slices:
+        if my_settings.use_slices:
             self.set_z_position.emit(self.settings.slices[0])
             time.sleep(0.1)
+        time.sleep(0.5)
         print("WRITING, ", self.daq_data.shape)
         written = self.ni.stream.write_many_sample(self.daq_data, timeout=20)
-        time.sleep(0.5)
+        # time.sleep(0.5)
         self.ni.task.start()
         print('================== Data written        ', written)
 
@@ -431,15 +489,15 @@ def make_pulse(ni, start, end, offset):
 class Galvo:
     def __init__(self, ni: NIDAQ):
         self.ni = ni
-        self.offset_0 = -0.15
-        self.amp_0 = 0.234
-        self.parking_voltage = self.offset_0  # -3.2
+        self.offset = -0.075  # -0.15
+        self.amp = 0.2346  # 0.234
+        self.parking_voltage = self.offset  # -3.2
 
     def one_frame(self, settings):
         #TODO: Sweeps per frame not possible anymore!
         self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
-        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
-        readout_time = float(readout_time)*1E-9  # in seconds
+        self.readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        self.readout_time = float(self.readout_time)*1E-9  # in seconds
         # down1 = np.linspace(0,-self.amp_0,round(self.n_points/(4*settings.sweeps_per_frame)))
         # up = np.linspace(-self.amp_0,self.amp_0,round(self.n_points/(2*settings.sweeps_per_frame)))
         # down2 = np.linspace(self.amp_0,0,round(self.n_points/settings.sweeps_per_frame) -
@@ -449,16 +507,39 @@ class Galvo:
         # galvo_frame = np.tile(galvo_frame, settings.sweeps_per_frame)
         # galvo_frame = galvo_frame[0:self.n_points]
         # Make this 30 ms shorter for the camera readout
-        n_points = self.n_points - round(readout_time * self.ni.smpl_rate)
-        galvo_frame = np.linspace(-self.amp_0, self.amp_0, n_points) + self.offset_0
-        # Add the 10 ms in the waiting position
-        readout_delay0 = np.ones(round(self.ni.smpl_rate * readout_time)) * (-self.amp_0 + self.offset_0)
-        readout_delay1 = np.ones(round(self.ni.smpl_rate * readout_time)) * (self.amp_0 + self.offset_0)
-        galvo_frame = np.hstack([readout_delay0, galvo_frame, readout_delay1])
+        """This is before twitcher"""
+        # n_points = self.n_points - round(readout_time * self.ni.smpl_rate)
+        # galvo_frame = np.linspace(-self.amp_0, self.amp_0, n_points) + self.offset_0
+        # # Add the 10 ms in the waiting position
+        # readout_delay0 = np.ones(round(self.ni.smpl_rate * readout_time)) * (-self.amp_0 + self.offset_0)
+        # readout_delay1 = np.ones(round(self.ni.smpl_rate * readout_time)) * (self.amp_0 + self.offset_0)
+        # galvo_frame = np.hstack([readout_delay0, galvo_frame, readout_delay1])
+        readout_length = round(self.readout_time * self.ni.smpl_rate)
+        n_points = self.n_points - readout_length
+        galvo_frame = np.linspace(-self.amp, self.amp, n_points)
+        # Make sure the galvo is already moving when the laser comes on.
+        overshoot_points = int(np.ceil(round(readout_length/20)/2))
+        scan_increment = galvo_frame[-1] - galvo_frame[-2]
+        self.overshoot_amp =  scan_increment * (overshoot_points + 1)
+        overshoot_0 = np.linspace(-self.amp - self.overshoot_amp, -self.amp - scan_increment, overshoot_points)
+        overshoot_1 = np.linspace(self.amp + scan_increment, self.amp + self.overshoot_amp, overshoot_points)
+        galvo_frame = np.hstack((overshoot_0, galvo_frame, overshoot_1)) + self.offset
+        galvo_frame = self.add_readout(galvo_frame)
         galvo_frame = self.add_delays(galvo_frame, settings)
         return galvo_frame
+        # galvo_frame = self.add_delays(galvo_frame, settings)
+        # return galvo_frame
+
+    def add_readout(self, frame):
+        readout_length = round(self.ni.smpl_rate * self.readout_time)
+        readout_length = readout_length - int(np.ceil(round(readout_length/20)/2))  # round(readout_length/20/2)
+        readout_delay0 = np.linspace(self.offset, -self.amp+self.offset-self.overshoot_amp, int(np.floor(readout_length*0.9)))
+        readout_delay0 = np.hstack([readout_delay0, np.ones(int(np.ceil(readout_length*0.1)))*readout_delay0[-1]])
+        readout_delay1 = np.linspace(self.offset + self.amp + self.overshoot_amp, self.offset, readout_length)
+        return np.hstack([readout_delay0, frame, readout_delay1])
 
     def add_delays(self, frame, settings):
+        # settings.post_delay = 0
         if settings.post_delay > 0:
             delay = np.ones(round(self.ni.smpl_rate * settings.post_delay)) * self.parking_voltage
             frame = np.hstack([frame, delay])
@@ -467,6 +548,105 @@ class Galvo:
             frame = np.hstack([delay, frame])
         return frame
 
+class Twitcher0:
+    """Here just to output solid 5V for now"""
+    def __init__(self, ni: NIDAQ):
+        self.ni = ni
+
+    def one_frame(self, settings):
+        self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
+        frame = np.ones(self.n_points) * 5
+        frame = self.add_readout(frame)
+        frame = self.add_delays(frame, settings)
+        return frame
+
+    def add_readout(self, frame):
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        readout_delay = np.ones(round(self.ni.smpl_rate * readout_time))* frame[-1]
+        frame = np.hstack([frame, readout_delay])
+        return frame
+
+    def add_delays(self, frame, settings):
+        if settings.post_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.post_delay))* frame[-1]
+            frame = np.hstack([frame, delay])
+
+        if settings.pre_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.pre_delay))* frame[-1]
+            frame = np.hstack([delay, frame])
+
+        return frame
+
+
+class Twitcher:
+    def __init__(self, ni:NIDAQ):
+        self.ni = ni
+        self.amp = 0.05
+        # The sampling rate in the settings should divide nicely with the frequency
+        self.freq = 2400  # Full cycle Hz
+        self.offset = 5
+
+    def one_frame(self, settings) -> np.ndarray:
+        self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        n_points = self.n_points + round(readout_time * self.ni.smpl_rate)
+        frame_time = n_points/self.ni.smpl_rate + readout_time # seconds
+        wavelength = 1/self.freq  # seconds
+        n_waves = frame_time/wavelength
+        points_per_wave = int(np.ceil(n_points/n_waves))
+        up = np.linspace(-1, 1, points_per_wave//2 + 1)
+        down = np.linspace(1, -1, points_per_wave//2 + 1)
+        frame = np.hstack((down[:-1], np.tile(np.hstack((up[:-1], down[:-1])), round(n_waves + 20)), up[:-1]))
+        frame = ndimage.gaussian_filter1d(frame, points_per_wave/20)
+        frame = frame[points_per_wave//2:n_points + points_per_wave//2]
+        frame = frame*(self.amp/frame.max()) + self.offset
+        frame = self.add_delays(frame, settings)
+        frame = np.expand_dims(frame, 0)
+        return frame
+
+
+    def add_delays(self, frame, settings):
+        if settings.post_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.post_delay))* frame[-1]
+            frame = np.hstack([frame, delay])
+
+        if settings.pre_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.pre_delay))* frame[0]
+            frame = np.hstack([delay, frame])
+
+        return frame
+
+class LED:
+    """Here just to output solid 5V for now"""
+    def __init__(self, ni: NIDAQ):
+        self.ni = ni
+
+    def one_frame(self, settings):
+        self.n_points = self.ni.sampling_rate*settings.sweeps_per_frame
+        frame = np.ones(self.n_points) * 0
+        frame = self.add_readout(frame)
+        frame = self.add_delays(frame, settings)
+        return frame
+
+    def add_readout(self, frame):
+        readout_time = self.ni.core.get_property("PrimeB_Camera", "Timing-ReadoutTimeNs")
+        readout_time = float(readout_time)*1E-9  # in seconds
+        readout_delay = np.ones(round(self.ni.smpl_rate * readout_time))* frame[-1]
+        frame = np.hstack([frame, readout_delay])
+        return frame
+
+    def add_delays(self, frame, settings):
+        if settings.post_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.post_delay))* frame[-1]
+            frame = np.hstack([frame, delay])
+
+        if settings.pre_delay > 0:
+            delay = np.ones(round(self.ni.smpl_rate * settings.pre_delay))* frame[-1]
+            frame = np.hstack([delay, frame])
+
+        return frame
 
 class Stage:
     def __init__(self, ni: NIDAQ):
@@ -537,7 +717,7 @@ class AOTF:
     def __init__(self, ni:NIDAQ):
         self.ni = ni
         self.blank_voltage = 10
-        core = self.ni.event_thread.bridge.get_core()
+        core = self.ni.core
         self.power_488 = float(core.get_property('488_AOTF',r"Power (% of max)"))
         self.power_561 = float(core.get_property('561_AOTF',r"Power (% of max)"))
 
@@ -611,6 +791,7 @@ class Brightfield:
     def one_frame(self, settings):
         led = make_pulse(self.ni, 0, 0.3, 0)
         return led
+
 
 if __name__ == '__main__':
     import sys
