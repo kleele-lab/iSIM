@@ -62,7 +62,7 @@ class NIController(Protocol):
         self.stream = nidaqmx.stream_writers.AnalogMultiChannelWriter(self.task.out_stream,
                                                                          auto_start=False)
         self.stream.write_many_sample(self.daq_data)
-        n_samples = 
+        # n_samples = 
         self.task.register_every_n_samples_transferred_from_buffer_event((self.daq_data.shape[1]),
                                                                             self.get_new_data)
 
