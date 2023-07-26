@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from hardware._devices import DAQSettings
+from isimgui.hardware._devices import DAQSettings
 
 
 @dataclass
