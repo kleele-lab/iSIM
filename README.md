@@ -20,3 +20,4 @@ Python Control Interface for the iSIM at LEB-EPFL
 1. Activate the virtual environment in a Powershell console: `C:\iSIM\isim_python_env\Scripts\Activate.ps1`
 1. Move into the cloned repository: `Set-Location C:\iSIM\isimgui`
 1. Install the control software: `pip install .`
+1. Create a shortcut to `C:\iSIM\Micro-Manager-2.0.2\ImageJ.exe` on the Desktop if it doesn't already exist.
