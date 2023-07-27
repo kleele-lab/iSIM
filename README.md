@@ -16,8 +16,8 @@ Python Control Interface for the iSIM at LEB-EPFL
 1. Clone this repo to `C:\iSIM\isimgui` on the control PC.
 1. Copy `MMStartup.bsh` from this repo to the Micro-Manager folder.
 1. Install the necessary Micro-Manager plugins from https://github.com/wl-stepp/micro-manager-isim by copying the .jar files into `C:\iSIM\Micro-Manager-2.0.2\mmplugins`.
-1. Create a new Python virtual environment with the following command. Note the directory! `python -m venv C:\iSIM\isim_python_env`
-1. Activate the virtual environment in a Powershell console: `C:\iSIM\isim_python_env\Scripts\Activate.ps1`
-1. Move into the cloned repository: `Set-Location C:\iSIM\isimgui`
+1. Create a new Python virtual environment with the following command. Note the directory! `python -m venv C:\iSIM\isim_python_env`.
+1. Activate the virtual environment in a Powershell console: `C:\iSIM\isim_python_env\Scripts\Activate.ps1`.
+1. Move into the cloned repository: `Set-Location C:\iSIM\isimgui`.
 1. Install the control software: `pip install .`
 1. Create a shortcut to `C:\iSIM\Micro-Manager-2.0.2\ImageJ.exe` on the Desktop if it doesn't already exist.
