@@ -1,0 +1,36 @@
+// set 488 nm laser power min and max
+mmc.setProperty("Sapphire","Maximum Laser Power", 300);
+mmc.setProperty("Sapphire","Minimum Laser Power", 30);
+mmc.setProperty("Sapphire","Wavelength", 488);
+
+// Set the default intensities for the lasers
+mmc.setProperty("488_AOTF","Power (% of max)", 20);
+mmc.setProperty("561_AOTF","Power (% of max)", 50);
+
+// put stage up
+Zstage=mmc.getFocusDevice();
+MaxZ=mmc.getProperty(Zstage, "Calibration");
+mmc.setProperty(Zstage, "Set position Z (um)",MaxZ);
+mmc.setProperty(Zstage, "Settling time Z axis (ms)",45);
+
+
+// set filter wheel speed and put blank first
+mmc.setProperty("Wheel-A","Speed",1);
+mmc.setProperty("Wheel-A","Label","Blank");
+
+
+// Turn on the lasers
+mmc.setProperty("Quantum_561nm", "Laser Operation", "On");
+mmc.setProperty("Quantum_561nm", "Power (mW)", 30);
+mmc.setShutterOpen(true);
+
+// Start Up the plugins we are going to use
+plugin_list = mm.plugins().getMenuPlugins();
+event_server = plugin_list.get("org.micromanager.plugins.pythoneventserver.PythonEventServer");
+event_server.onPluginSelected();
+acq_button_hijack = plugin_list.get("org.micromanager.acquirebuttonhijack.AcquireButtonHijack");
+acq_button_hijack.onPluginSelected();
+
+
+// Start the python DAQ control and GUI
+exec("powershell C:/iSIM/isimgui/main.ps1");
