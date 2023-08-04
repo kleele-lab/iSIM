@@ -1,6 +1,7 @@
 
 import pygame
 from PyQt5.QtCore import  pyqtSlot, pyqtSignal, QObject, QCoreApplication, QTimer, QThread
+from PyQt5.QtWidgets import QApplication
 import time
 import sys
 
@@ -128,8 +129,15 @@ class MonogramCC(QObject):
             return relative_move
 
 
+
+
+
 def main(control:bool = False):
-    app = QCoreApplication(sys.argv)
+    from gui.qt_classes import QWidgetRestore
+    from gui.GUIWidgets import FocusSlider
+    from pymm_eventserver.event_thread import EventThread
+
+    app = QApplication(sys.argv)
     try:
         obj = MonogramCC()
     except IOError as e:
@@ -138,8 +146,12 @@ def main(control:bool = False):
 
     if control:
         import MicroManagerControl
-        micro_control = MicroManagerControl.MicroManagerControl()
-        obj.monogram_stage_position_event.connect(micro_control.track_z_change)
+        event_thread = EventThread()
+        mm_interface = MicroManagerControl.MicroManagerControl(event_thread)
+        focus_slider = FocusSlider()
+        focus_slider.z_stage_position_python.connect(mm_interface.set_z_position)
+        focus_slider.connect_monogram(obj)
+        focus_slider.show()
     # Make this interruptable by Ctrl+C
     timer = QTimer()
     timer.timeout.connect(lambda: None)

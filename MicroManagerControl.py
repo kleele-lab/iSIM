@@ -17,8 +17,10 @@ class MicroManagerControl(QObject):
             self.studio = Studio()
         else:
             self.event_thread = event_thread
-            self.studio = event_thread.studio
-            self.core = event_thread.core
+            self.studio = Studio()
+            self.core = Core()
+            # self.studio = event_thread.studio
+            # self.core = event_thread.core
         self.data = self.studio.data
         self.live = self.studio.get_snap_live_manager()
         self.image_format = QImage.Format.Format_Grayscale16
@@ -32,6 +34,7 @@ class MicroManagerControl(QObject):
 
     @pyqtSlot(float)
     def track_z_change(self, pos: float):
+        print(pos)
         if self.move_to == self.zPosition:
             self.set_z_position(self.zPosition + pos)
         new_pos = self.move_to + pos
