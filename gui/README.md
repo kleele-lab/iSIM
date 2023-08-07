@@ -15,7 +15,7 @@ Python Control Interface for the iSIM at LEB-EPFL
 1. Install **Micro-Manager 2.0.1 20220523** into `C:\iSIM\Micro-Manager-2.0.2`.
 1. Clone this repo and move the folder called `gui` to `C:\iSIM\isimgui` on the control PC.
 1. Copy `MMStartup.bsh` from this repo to the Micro-Manager folder.
-1. Install the `AcquireButtonHijack` and `PseudoChannels` Micro-Manager plugins from https://github.com/wl-stepp/micro-manager-isim by copying the .jar files into `C:\iSIM\Micro-Manager-2.0.2\mmplugins`.
+1. Install the `AcquireButtonHijack` and `PseudoChannels` Micro-Manager plugins from this repository by copying the .jar files from a GitHub release into `C:\iSIM\Micro-Manager-2.0.2\mmplugins`.
 1. Install the `pymm-eventserver` Micro-Manager plugin from https://github.com/LEB-EPFL/pymm-eventserver by copying the .jar file into the same directory as the previous step.
 1. Create a new Python virtual environment with the following command. Note the directory! `python -m venv C:\iSIM\isim_python_env`.
 1. Activate the virtual environment in a Powershell console: `C:\iSIM\isim_python_env\Scripts\Activate.ps1`.
