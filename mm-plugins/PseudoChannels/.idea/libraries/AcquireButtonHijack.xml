@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="AcquireButtonHijack">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../AcquireButtonHijack/out/artifacts/AcquireButtonHijack/AcquireButtonHijack.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
