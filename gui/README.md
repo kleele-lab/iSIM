@@ -22,3 +22,15 @@ Python Control Interface for the iSIM at LEB-EPFL
 1. Move into the cloned repository: `Set-Location C:\iSIM\isimgui`.
 1. Install the control software: `pip install .`
 1. Create a shortcut to `C:\iSIM\Micro-Manager-2.0.2\ImageJ.exe` on the Desktop if it doesn't already exist.
+
+## Alignment
+
+This repository contains a GUI for aligning the microlenses and pinhole array of the iSIM. It displays regions from a live feed of the illumination spots overlaid with guidelines and spot centers. The goal of the alignment is to bring the centers of the spots to coincide with the guidelines in all regions of the field of view.
+
+To launch the alignment tool, first start Micro-Manager. In the `pymm-eventserver` plugin GUI window, ensure that the `Live Mode Events` checkbox is checked.
+
+Next, start the alignment GUI from this directory with the following command:
+
+```console
+py main.py alignment
+```
