@@ -11,7 +11,7 @@ Python Control Interface for the iSIM at LEB-EPFL
 
 ### Steps
 
-1. Create a folder called on the PC called `C:\iSIM\`.
+1. Create a folder on the PC called `C:\iSIM\`.
 1. Install **Micro-Manager 2.0.1 20220523** into `C:\iSIM\Micro-Manager-2.0.2`.
 1. Clone this repo and move the folder called `gui` to `C:\iSIM\isimgui` on the control PC.
 1. Copy `MMStartup.bsh` from this repo to the Micro-Manager folder.
@@ -22,6 +22,7 @@ Python Control Interface for the iSIM at LEB-EPFL
 1. Move into the cloned repository: `Set-Location C:\iSIM\isimgui`.
 1. Install the control software: `pip install .`
 1. Create a shortcut to `C:\iSIM\Micro-Manager-2.0.2\ImageJ.exe` on the Desktop if it doesn't already exist.
+1. When starting Micro-Manager, load the configuration `iSIM.cfg` in [../mmconfigs](../mm-configs).
 
 ## Alignment
 
