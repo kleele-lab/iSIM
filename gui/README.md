@@ -22,7 +22,11 @@ Python Control Interface for the iSIM at LEB-EPFL
 1. Move into the cloned repository: `Set-Location C:\iSIM\isimgui`.
 1. Install the control software: `pip install .`
 1. Create a shortcut to `C:\iSIM\Micro-Manager-2.0.2\ImageJ.exe` on the Desktop if it doesn't already exist.
+
+### Micro-Manager Configuration
+
 1. When starting Micro-Manager, load the configuration `iSIM.cfg` in [../mmconfigs](../mm-configs).
+1. **The first time you start Micro-Manager, you will need to run the event server for Pycromanager to receive events.** To do this, navigate to `Tools` > `Options...`. Check `Run server on port 4827` and click OK. Restart Micro-Manager. You will only need to do this once for each new user on the PC that uses Micro-Manager.
 
 ## Alignment
 
