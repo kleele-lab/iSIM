@@ -6,3 +6,4 @@ isimgui.code-workspace
 Tests
 .vscode
 isim
+.venv/
