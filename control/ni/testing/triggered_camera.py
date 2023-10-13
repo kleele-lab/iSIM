@@ -6,7 +6,7 @@ import numpy as np
 import time
 from threading import Thread, Lock
 from datetime import datetime
-from sequences import NIFrame
+
 
 
 try:
@@ -31,8 +31,11 @@ def makePulse(start, end, offset, n_points):
 class iSIMEngine(MDAEngine):
     def __init__(self, mmc):
         super().__init__(mmc)
+
+        self.pre_trigger_delay = 7 #ms
+
         self.mmc = mmc
-        self.sequence = NIFrame()
+
 
         self.task = nidaqmx.Task()
         self.task.ao_channels.add_ao_voltage_chan('Dev1/ao2')
@@ -51,14 +54,13 @@ class iSIMEngine(MDAEngine):
 
     def setup_event(self, event):
         self.snap_lock.acquire()
-        self.sequence.get_data(event)
         thread = Thread(target=self.snap_and_get, args=(event,))
         thread.start()
         self.task2.write(5)
 
     def exec_event(self, event):
         self.snap_lock.acquire()
-        time.sleep(0.007)
+        time.sleep(self.pre_trigger_delay/1000)
         self.task.write(self.camera_data)
         self.task2.write(0)
         return ()
@@ -70,8 +72,9 @@ class iSIMEngine(MDAEngine):
         self.snap_lock.release()
 
     def on_frame(self, image, event, meta):
-        time_here = datetime.strptime(meta["Time"], '%Y-%m-%d %H:%M:%S.%f')
-        self.frame_times[event.index['t']] = time_here.timestamp()*1000
+        # time_here = datetime.strptime(meta["Time"], '%Y-%m-%d %H:%M:%S.%f')
+        # self.frame_times[event.index['t']] = time_here.timestamp()*1000
+        self.frame_times[event.index['t']] = time.perf_counter()*1000
 
     def on_sequence_end(self):
         frame_times = self.frame_times[self.frame_times != 0]
@@ -79,8 +82,16 @@ class iSIMEngine(MDAEngine):
         std = np.std(np.diff(frame_times))
         print(round(mean_offset*100)/100, "±", round(std*100)/100, "ms, max",
               max(np.diff(frame_times)), "#", len(frame_times))
+        pre_trigger_delay = float(self.mmc.getProperty("Prime", "Timing-ReadoutTimeNs"))/1e6
+        pre_trigger_delay = pre_trigger_delay if pre_trigger_delay > 0 else None
+        if pre_trigger_delay is None:
+            mode = self.mmc.getProperty("Prime", "ReadoutRate")
+            pre_trigger_delay = 12.94 if "100MHz" in mode else 5.85
         print("Excpected fastest cycle time: ",
-              EXPOSURE + float(self.mmc.getProperty("Prime", "Timing-ReadoutTimeNs"))/5e5)
+              EXPOSURE + float(self.mmc.getProperty("Prime", "Timing-ReadoutTimeNs"))/1e6 +
+              self.pre_trigger_delay + pre_trigger_delay)
+        print()
+        print(float(self.mmc.getProperty("Prime", "Timing-PreTriggerDelayNs")))
 
 
 mmc.setExposure(EXPOSURE)
