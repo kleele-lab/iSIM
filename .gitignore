@@ -8,3 +8,4 @@ Tests
 .vscode
 isim
 .venv/
+**/*.egg-info/
