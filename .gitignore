@@ -3,6 +3,7 @@ __pycache__/
 *.pylintrc
 isimgui-venv
 isimgui.code-workspace
+*egg-info/
 Tests
 .vscode
 isim

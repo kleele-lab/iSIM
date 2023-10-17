@@ -7,3 +7,5 @@ Tests
 .vscode
 isim
 .venv/
+.vscode/
+**/*egg-info/
