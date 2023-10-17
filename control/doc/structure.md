@@ -5,6 +5,7 @@ flowchart TD;
     pymmcore-widgets((pymmcore-widgets))
     iSIMEngine{iSIMEngine}
     control.gui{control.gui}
+    iSIMAcquisition{iSIMSettings}
     devices{devices}
     NIDAQ[[NIDAQ]]
     nidaqmx((nidaqmx))
@@ -13,12 +14,16 @@ flowchart TD;
     useq --> MDASequence
     pymmcore-widgets --> MDAWidget
     control.gui --> AcquisitionSettings
-    AcquisitionSettings --> MDASequence
+    AcquisitionSettings --> iSIMAcquisition
     MDAWidget --> AcquireButton
     MDAWidget --> useq
-    AcquireButton -- run_mda --> pymmcore-plus
-    MDASequence --> pymmcore-plus
+
+    MDASequence --> iSIMAcquisition
     pymmcore-plus --> MDARunner
+
+    iSIMAcquisition --> MDARunner
+    iSIMAcquisition --> devices
+
     MDARunner -- MDAEvent, \n MDASequence --> iSIMEngine
     iSIMEngine -- MDASequence --> setup_sequence
     iSIMEngine -- MDAEvent --> setup_event
@@ -31,17 +36,20 @@ flowchart TD;
     nidaqmx --> NIDAQ
     snap --> StackViewer
 
+
     %% Live Mode
     pymmcore-widgets --> LiveButton
     pymmcore-plus --> LiveEngine
-    LiveButton -- continuousAcquisitionStarted --> LiveEngine
+
     LiveEngine --> nidaqmx
     LiveEngine --> snap
     NIDAQ --> snap
     snap --> LiveViewer
 
+    iSIMAcquisition --> LiveEngine
+
     control.gui --> LiveSettings
     pymmcore-widgets --> control.gui
-    LiveSettings --> LiveEngine
+    LiveSettings --> iSIMAcquisition
 
 ```
