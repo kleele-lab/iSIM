@@ -284,12 +284,18 @@ def decon_ome_stack(file_dir, params=None):
 
     with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file), imagej=True, byteorder='>') as tif: 
         tif.write(decon, photometric='minisblack', 
-                rowsperstrip=1532, 
+                #rowsperstrip=1532, 
                 #bitspersample=16, 
                 compression='None', 
                 #resolution=(219780, 219780, 'CENTIMETER'),
-                metadata={'axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
-                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),(50839,'str',None,imagej_metadata,True),(279,'int', 2,(6556960,),True)]
+                metadata={'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0),'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
+                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
+                    (50839,'str',None,imagej_metadata,True),
+                    (279,'int', 2,(6556960,),True),
+#                    (286,'float',1, 12342.2, True),
+#                    (287,'float',1, -6171.9, True),
+#                    (286,'float',1, 12342.2, True)
+                    ]
                 )
 
     # Write metadata to the prepared file
