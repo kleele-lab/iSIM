@@ -1,4 +1,5 @@
 import os
+import sys
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
 import tensorflow
@@ -13,7 +14,7 @@ from prepare import get_filter_zone_ver_stripes, prepare_one_slice
 import cuda_decon
 
 # Import
-folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/iSIM/231010_RPE1_cycling_1"
+folder = sys.args[1]
 
 files = Path(folder).rglob('*.ome.tif')
 

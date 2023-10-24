@@ -259,35 +259,42 @@ def decon_ome_stack(file_dir, params=None):
         imagej_metadata['min'] = np.min(decon)
         imagej_metadata['max'] = np.max(decon)
         imagej_metadata['Ranges'] = (np.min(decon), np.max(decon))
-        # for idx, lut in enumerate(imagej_metadata['LUTs']):
-        #     imagej_metadata['LUTs'][idx] = imagej_metadata['LUTs'][idx].tolist()
+        for idx, lut in enumerate(imagej_metadata['LUTs']):
+            imagej_metadata['LUTs'][idx] = imagej_metadata['LUTs'][idx].tolist()
     except TypeError:
         print("Could not set imagej_metadata")
-    # info = json.loads(imagej_metadata['Info'])
-    # # Construct the correct one here
-    # info['AxisOrder'] = ['position', 'time', 'z', 'channel']
-    # imagej_metadata['Info'] = json.dumps(info)
+    info = json.loads(imagej_metadata['Info'])
+    # Construct the correct one here
+    info['AxisOrder'] = ['position', 'time', 'z', 'channel']
+    imagej_metadata['Info'] = json.dumps(info)
 
     out_file = os.path.basename(file_dir).rsplit('.', 2)
     out_file = out_file[0] + ".".join(["_decon", *out_file[1:]])
 
 
     UUID = uuid.uuid1()
-    #Get metadata to transfer
-    with tifffile.TiffReader(file_dir) as reader:
-        mdInfo = xmltodict.parse(reader.ome_metadata)
-        mdInfo['OME']['Image']["Pixels"]["@DimensionOrder"] = "XYCZT"
-        mdInfo['OME']['Image']['@Name'] = os.path.basename(out_file).split('.')[0]
-        for frame_tiffdata in mdInfo['OME']['Image']['Pixels']['TiffData']:
-            frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
-            frame_tiffdata['UUID']['#text'] =  'urn:uuid:' + str(UUID)
+    # Get metadata to transfer
+#    with tifffile.TiffReader(file_dir) as reader:
+#        mdInfo = xmltodict.parse(reader.ome_metadata)
+#        #mdInfo['OME']['Image']["Pixels"]["@DimensionOrder"] = "XYZCT"
+#        mdInfo['OME']['Image']['@Name'] = os.path.basename(out_file).split('.')[0]     
+#        for frame_tiffdata in mdInfo['OME']['Image']['Pixels']['TiffData']:
+#            frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
+#            frame_tiffdata['UUID']['#text'] =  'urn:uuid:' + str(UUID)
 
-    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file), bigtiff=True, ome=True) as tif:
-        tif.write(decon, photometric='minisblack', compression='None')
+    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file), imagej=True, byteorder='>') as tif: 
+        tif.write(decon, photometric='minisblack', 
+                rowsperstrip=1532, 
+                #bitspersample=16, 
+                compression='None', 
+                #resolution=(219780, 219780, 'CENTIMETER'),
+                metadata={'axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
+                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),(50839,'str',None,imagej_metadata,True),(279,'int', 2,(6556960,),True)]
+                )
 
     # Write metadata to the prepared file
-    my_mdInfo = xmltodict.unparse(mdInfo).encode(encoding='UTF-8', errors='strict')
-    tifffile.tiffcomment(os.path.join(os.path.dirname(file_dir), out_file), comment=my_mdInfo)
+#    my_mdInfo = xmltodict.unparse(mdInfo).encode(encoding='UTF-8', errors='strict')
+#    tifffile.tiffcomment(os.path.join(os.path.dirname(file_dir), out_file), comment=imagej_metadata) # my_mdInfo)
 
     # with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file), bigtiff=True) as tif:
     #     with tifffile.TiffReader(file_dir) as reader:

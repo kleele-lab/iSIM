@@ -13,10 +13,25 @@ module load cuda/11.8.0
 module load cudnn
 
 
+if [ $# -eq 0 ];
+then
+  echo "$0: Missing arguments"
+  exit 1
+elif [ $# -gt 1 ];
+then
+  echo "$0: Too many arguments: $@"
+  exit 1
+else
+  echo "Reading folder: $1"
+fi
+
 cd deconvolution
 
-python script_jsammet.py
+for d in $1/*/ ; do
+        python script_folder.py d
+done
 
 cd ..
 
 exit 0
+
