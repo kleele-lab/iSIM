@@ -28,10 +28,12 @@ fi
 cd deconvolution
 
 for d in $1/*/ ; do
-        python script_folder.py d
+        python script_folder.py $d
 done
 
 cd ..
 
 exit 0
+
+#use via: sbatch run_iSIM.sh /nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/iSIM
 

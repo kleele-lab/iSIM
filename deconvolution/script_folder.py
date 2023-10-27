@@ -1,7 +1,7 @@
 import os
 import sys
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import tensorflow
 
 gpus = tensorflow.config.list_physical_devices('GPU')
@@ -14,7 +14,7 @@ from prepare import get_filter_zone_ver_stripes, prepare_one_slice
 import cuda_decon
 
 # Import
-folder = sys.args[1]
+folder = sys.argv[1]
 
 files = Path(folder).rglob('*.ome.tif')
 
@@ -30,6 +30,6 @@ for file in files:
 
     if not 'decon' in file.name:
 
-        print(file.name)
+        # print(file.name)
         print(file.as_posix())
         cuda_decon.decon_ome_stack(file.as_posix(), params=parameters)

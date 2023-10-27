@@ -9,7 +9,7 @@ from prepare import prepare_decon, get_filter_zone
 from dataclasses import dataclass
 # import tensorflow_probability as tfp
 # import tensorflow as tf
-
+import h5py as h
 
 import tifffile
 import xmltodict
@@ -269,7 +269,7 @@ def decon_ome_stack(file_dir, params=None):
     imagej_metadata['Info'] = json.dumps(info)
 
     out_file = os.path.basename(file_dir).rsplit('.', 2)
-    out_file = out_file[0] + ".".join(["_decon", *out_file[1:]])
+    out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
 
 
     UUID = uuid.uuid1()
@@ -282,22 +282,24 @@ def decon_ome_stack(file_dir, params=None):
 #            frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
 #            frame_tiffdata['UUID']['#text'] =  'urn:uuid:' + str(UUID)
 
-    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file), imagej=True, byteorder='>') as tif: 
+    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), imagej=True, byteorder='>') as tif: 
         tif.write(decon, photometric='minisblack', 
-                #rowsperstrip=1532, 
-                #bitspersample=16, 
+                rowsperstrip=1532, 
+                bitspersample=16, 
                 compression='None', 
-                #resolution=(219780, 219780, 'CENTIMETER'),
-                metadata={'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0),'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
+                resolution=(219780, 219780, 'CENTIMETER'),
+                metadata={'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
                 extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
-                    (50839,'str',None,imagej_metadata,True),
-                    (279,'int', 2,(6556960,),True),
+#                    (50839,'str',None,imagej_metadata,True),
+#                    (279,'int', 2,(6556960,),True),
 #                    (286,'float',1, 12342.2, True),
 #                    (287,'float',1, -6171.9, True),
 #                    (286,'float',1, 12342.2, True)
                     ]
                 )
-
+    hf = h.File(os.path.join(os.path.dirname(file_dir), out_file[0] + "_decon.h5"), 'w')
+    hf.create_dataset('data',data=decon)
+    hf.close()
     # Write metadata to the prepared file
 #    my_mdInfo = xmltodict.unparse(mdInfo).encode(encoding='UTF-8', errors='strict')
 #    tifffile.tiffcomment(os.path.join(os.path.dirname(file_dir), out_file), comment=imagej_metadata) # my_mdInfo)
