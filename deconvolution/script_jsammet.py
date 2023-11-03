@@ -13,7 +13,8 @@ from prepare import get_filter_zone_ver_stripes, prepare_one_slice
 import cuda_decon
 
 # Import
-folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/iSIM/231010_RPE1_cycling_1"
+# folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/iSIM/231010_RPE1_cycling_1"
+folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/20231012_coculture48h/20231012_coculture08_2hybrids"
 
 files = Path(folder).rglob('*.ome.tif')
 

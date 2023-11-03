@@ -259,8 +259,8 @@ def decon_ome_stack(file_dir, params=None):
         imagej_metadata['min'] = np.min(decon)
         imagej_metadata['max'] = np.max(decon)
         imagej_metadata['Ranges'] = (np.min(decon), np.max(decon))
-        for idx, lut in enumerate(imagej_metadata['LUTs']):
-            imagej_metadata['LUTs'][idx] = imagej_metadata['LUTs'][idx].tolist()
+#        for idx, lut in enumerate(imagej_metadata['LUTs']):
+#            imagej_metadata['LUTs'][idx] = imagej_metadata['LUTs'][idx].tolist()
     except TypeError:
         print("Could not set imagej_metadata")
     info = json.loads(imagej_metadata['Info'])
@@ -289,13 +289,13 @@ def decon_ome_stack(file_dir, params=None):
                 compression='None', 
                 resolution=(219780, 219780, 'CENTIMETER'),
                 metadata={'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
-                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
+#                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
 #                    (50839,'str',None,imagej_metadata,True),
 #                    (279,'int', 2,(6556960,),True),
 #                    (286,'float',1, 12342.2, True),
 #                    (287,'float',1, -6171.9, True),
 #                    (286,'float',1, 12342.2, True)
-                    ]
+#                    ]
                 )
     hf = h.File(os.path.join(os.path.dirname(file_dir), out_file[0] + "_decon.h5"), 'w')
     hf.create_dataset('data',data=decon)
