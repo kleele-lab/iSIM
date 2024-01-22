@@ -14,7 +14,7 @@ import cuda_decon
 
 # Import
 # folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/iSIM/231010_RPE1_cycling_1"
-folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Daria/iSIM_deconv/231122_rpe1_cycling_mitotracker_tubulin_3"
+folder = r"/nfs/nas22/fs2202/biol_bc_kleele_2/Ana/iSIM_deconvolution_Ana/20231108_coculture/20231108_coculture24h_4"
 
 files = Path(folder).rglob('*.ome.tif')
 

@@ -13,6 +13,7 @@ import h5py as h
 
 import tifffile
 import xmltodict
+from dicttoxml import dicttoxml
 from tqdm import tqdm
 from typing import Union
 import json
@@ -30,7 +31,7 @@ OVERLAP = 6
 
 def main():
     from Analysis.tools import get_files
-    folder = 'W:/Watchdog/microM_test/201208_cell_Int0s_30pc_488_50pc_561_band_5'
+    folder = '/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/240119_RPE1_Torin_Mdivi_MFI8_iSIM/18h'
     files, _ = get_files(folder)
 
     algo = fd_restoration.RichardsonLucyDeconvolver(2).initialize()
@@ -125,9 +126,12 @@ def init_algo(image):
 
 
 def decon_ome_stack(file_dir, params=None):
-    with tifffile.TiffFile(file_dir) as tif:
+    with tifffile.TiffFile(file_dir) as tif: # , is_mmstack=False, is_ome=True
         imagej_metadata = tif.imagej_metadata
+        print('header 4 :', tif._fh.read(4))
+        print('header[:2]: ', tif._fh.read(4)[:2])
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
+        old_metadata = tif.ome_metadata
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
         size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
         size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
@@ -232,6 +236,8 @@ def decon_ome_stack(file_dir, params=None):
                             padding = (params.kernel['kernel'].shape[0] - kernel_shape[0])//2
                             if padding > 0:
                                 params.kernel['kernel'] = params.kernel['kernel'][padding+1:-padding]
+                        print(params.kernel['kernel'].shape[0], " and ", kernel_shape[0])
+                        print(padding)
                         # params = CudaParams(background=background, shape=kernel_shape, ndim=ndim, z_step=z_step)
                         decon[timepoint, slices[0]+OVERLAP//2:slices[1], channel, :, :] = richardson_lucy(data_here, params=params)[OVERLAP//2:, :, :]
                     else:
@@ -282,15 +288,17 @@ def decon_ome_stack(file_dir, params=None):
 #            frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
 #            frame_tiffdata['UUID']['#text'] =  'urn:uuid:' + str(UUID)
 
-    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), imagej=True, byteorder='>') as tif: 
-        tif.write(decon, photometric='minisblack', 
+    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), byteorder='<', ome=True) as tif: 
+        tif.ome_metadata = old_metadata
+        tif.write(decon, 
+                photometric='minisblack', 
                 rowsperstrip=1532, 
                 bitspersample=16, 
                 compression='None', 
                 resolution=(219780, 219780, 'CENTIMETER'),
-                metadata={'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
+                metadata=imagej_metadata #{'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
 #                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
-#                    (50839,'str',None,imagej_metadata,True),
+#                    (5089,'str',None,imagej_metadata,True),
 #                    (279,'int', 2,(6556960,),True),
 #                    (286,'float',1, 12342.2, True),
 #                    (287,'float',1, -6171.9, True),
