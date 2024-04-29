@@ -132,6 +132,7 @@ def decon_ome_stack(file_dir, params=None):
         print('header[:2]: ', tif._fh.read(4)[:2])
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         old_metadata = tif.ome_metadata
+        print(old_metadata)
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
         size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
         size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
@@ -233,7 +234,7 @@ def decon_ome_stack(file_dir, params=None):
                     elif slices[1] == size_z:
                         # print(slices[0]+OVERLAP//2, " to ", size_z)
                         if params.kernel['kernel'].shape[0] != kernel_shape[0]:
-                            padding = (params.kernel['kernel'].shape[0] - kernel_shape[0])//2
+                            padding = (params.kernel['kernel'].shape[0] - kernel_shape[0] + 1)//2
                             if padding > 0:
                                 params.kernel['kernel'] = params.kernel['kernel'][padding+1:-padding]
                         print(params.kernel['kernel'].shape[0], " and ", kernel_shape[0])
@@ -269,10 +270,10 @@ def decon_ome_stack(file_dir, params=None):
 #            imagej_metadata['LUTs'][idx] = imagej_metadata['LUTs'][idx].tolist()
     except TypeError:
         print("Could not set imagej_metadata")
-    info = json.loads(imagej_metadata['Info'])
+    # info = json.loads(imagej_metadata['Info'])
     # Construct the correct one here
-    info['AxisOrder'] = ['position', 'time', 'z', 'channel']
-    imagej_metadata['Info'] = json.dumps(info)
+    # info['AxisOrder'] = ['position', 'time', 'z', 'channel']
+    # imagej_metadata['Info'] = json.dumps(info)
 
     out_file = os.path.basename(file_dir).rsplit('.', 2)
     out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
@@ -288,15 +289,15 @@ def decon_ome_stack(file_dir, params=None):
 #            frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
 #            frame_tiffdata['UUID']['#text'] =  'urn:uuid:' + str(UUID)
 
-    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), byteorder='<', ome=True) as tif: 
-        tif.ome_metadata = old_metadata
-        tif.write(decon, 
-                photometric='minisblack', 
-                rowsperstrip=1532, 
-                bitspersample=16, 
-                compression='None', 
-                resolution=(219780, 219780, 'CENTIMETER'),
-                metadata=imagej_metadata #{'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
+#    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), byteorder='<', ome=True) as tif: 
+#        tif.ome_metadata = old_metadata
+#        tif.write(decon, 
+#                photometric='minisblack', 
+#                rowsperstrip=1532, 
+#                bitspersample=16, 
+#                compression='None', 
+#                resolution=(219780, 219780, 'CENTIMETER'),
+#                metadata=imagej_metadata #{'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
 #                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
 #                    (5089,'str',None,imagej_metadata,True),
 #                    (279,'int', 2,(6556960,),True),
@@ -304,7 +305,7 @@ def decon_ome_stack(file_dir, params=None):
 #                    (287,'float',1, -6171.9, True),
 #                    (286,'float',1, 12342.2, True)
 #                    ]
-                )
+#                )
     hf = h.File(os.path.join(os.path.dirname(file_dir), out_file[0] + "_decon.h5"), 'w')
     hf.create_dataset('data',data=decon)
     hf.close()

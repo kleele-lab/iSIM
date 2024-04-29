@@ -31,9 +31,12 @@ for d in $1/*/ ; do
         python script_folder.py $d
 done
 
+# Check for images in mother dir
+python script_folder.py $1
+
 cd ..
 
 exit 0
 
-#use via: sbatch run_iSIM.sh /nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/iSIM
+#use via: sbatch run_iSIM.sh /nfs/nas22/fs2202/biol_bc_kleele_2/path_to_image
 

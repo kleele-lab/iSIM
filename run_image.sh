@@ -20,13 +20,19 @@ elif [ $# -gt 1 ];
 then
   echo "$0: Too many arguments: $@"
   exit 1
+fi
+
+if [[ "$1" == *.ome.tif ]]
+then
+	echo "reading image $1"
 else
-  echo "Reading folder: $1"
+then
+	echo"$0: Wrong arguments"
 fi
 
 cd deconvolution
 
-python script_single.py $1
+python script_image.py $1
 
 cd ..
 

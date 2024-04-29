@@ -1,7 +1,6 @@
 import os
-import sys
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow
 
 gpus = tensorflow.config.list_physical_devices('GPU')
@@ -15,7 +14,6 @@ import cuda_decon
 
 # Import
 folder = sys.argv[1]
-
 files = Path(folder).rglob('*.ome.tif')
 
 
@@ -27,7 +25,7 @@ parameters = {
 # background 'median': median of each z-stack as bg
 
 for file in files:
-    print(file.name) 
+
     if not 'decon' in file.name:
 
         print(file.name)
