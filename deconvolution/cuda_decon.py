@@ -128,11 +128,11 @@ def init_algo(image):
 def decon_ome_stack(file_dir, params=None):
     with tifffile.TiffFile(file_dir) as tif: # , is_mmstack=False, is_ome=True
         imagej_metadata = tif.imagej_metadata
-        print('header 4 :', tif._fh.read(4))
-        print('header[:2]: ', tif._fh.read(4)[:2])
+        #print('header 4 :', tif._fh.read(4))
+        #print('header[:2]: ', tif._fh.read(4)[:2])
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         old_metadata = tif.ome_metadata
-        print(old_metadata)
+        #print(old_metadata)
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
         size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
         size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
@@ -280,6 +280,10 @@ def decon_ome_stack(file_dir, params=None):
 
 
     UUID = uuid.uuid1()
+
+    # Naive attempt to save as tiff
+    io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon)
+
     # Get metadata to transfer
 #    with tifffile.TiffReader(file_dir) as reader:
 #        mdInfo = xmltodict.parse(reader.ome_metadata)
