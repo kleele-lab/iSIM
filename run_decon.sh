@@ -12,6 +12,7 @@ module load python_gpu/3.11.2
 module load cuda/11.8.0
 module load cudnn
 
+# Make sure there is only one argument, i.e., folder path
 if [ $# -eq 0 ];
 then
   echo "$0: Missing arguments"
@@ -24,10 +25,18 @@ else
   echo "Reading folder: $1"
 fi
 
+# Enter folder with python script
 cd deconvolution
 
-python script_single.py $1
+# Run decon
+for f in $1/ ; do
+        if [[ "$f" == *.ome.tif ]]
+        then
+                python script_image.py $f
+        fi
+done
 
+# Return to initial location
 cd ..
 
 exit 0

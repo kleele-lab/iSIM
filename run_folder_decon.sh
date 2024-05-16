@@ -25,18 +25,26 @@ else
   echo "Reading folder: $1"
 fi
 
+
+# Enter folder with python script
 cd deconvolution
 
+# Check for images in mother dir
 for d in $1/*/ ; do
         python script_folder.py $d
 done
 
-# Check for images in mother dir
-python script_folder.py $1
+for f in $1/ ; do
+	if [[ "$f" == *.ome.tif ]]
+        then
+                python script_image.py $f
+        fi
+done
 
+# Return to initial location
 cd ..
 
 exit 0
 
-#use via: sbatch run_iSIM.sh /nfs/nas22/fs2202/biol_bc_kleele_2/path_to_image
+#use via: sbatch run_folder_decon.sh /nfs/nas22/fs2202/biol_bc_kleele_2/path_to_image
 
