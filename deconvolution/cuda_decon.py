@@ -17,6 +17,7 @@ from dicttoxml import dicttoxml
 from tqdm import tqdm
 from typing import Union
 import json
+from PIL import Image
 
 import uuid
 import time  
@@ -126,13 +127,14 @@ def init_algo(image):
 
 
 def decon_ome_stack(file_dir, params=None):
+    data = None
     with tifffile.TiffFile(file_dir) as tif: # , is_mmstack=False, is_ome=True
         imagej_metadata = tif.imagej_metadata
-        #print('header 4 :', tif._fh.read(4))
+      #print('header 4 :', tif._fh.read(4))
         #print('header[:2]: ', tif._fh.read(4)[:2])
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         old_metadata = tif.ome_metadata
-        #print(old_metadata)
+       #print(old_metadata)
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
         size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
         size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
@@ -143,9 +145,21 @@ def decon_ome_stack(file_dir, params=None):
             z_step = 0.2
         # 'XYCZT' or 'XYZCT' ?
         dim_order = my_dict['OME']['Image']["Pixels"]["@DimensionOrder"]
+
         data = tif.asarray()
-        # print(size_t, size_z, size_c)
-        # print(dim_order)
+    if data is None:
+        print("ATTENION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
+        data = io.imread(file_dir, plugin='pil')
+    
+        dim_order = 'XYCZT'
+    
+        size_t = 1
+        size_z = data.shape[0]
+        size_c = 1
+
+        z_step = 0.2
+    print(size_t, size_z, size_c)
+    print(dim_order)
 
     ndim = 2 if size_z == 1 else 3
     # Make standardized array with all dimensions
@@ -262,14 +276,14 @@ def decon_ome_stack(file_dir, params=None):
     # Output
 
     #Adjust metadata
-    try:
-        imagej_metadata['min'] = np.min(decon)
-        imagej_metadata['max'] = np.max(decon)
-        imagej_metadata['Ranges'] = (np.min(decon), np.max(decon))
+#    try:
+#        imagej_metadata['min'] = np.min(decon)
+#        imagej_metadata['max'] = np.max(decon)
+#        imagej_metadata['Ranges'] = (np.min(decon), np.max(decon))
 #        for idx, lut in enumerate(imagej_metadata['LUTs']):
 #            imagej_metadata['LUTs'][idx] = imagej_metadata['LUTs'][idx].tolist()
-    except TypeError:
-        print("Could not set imagej_metadata")
+#    except TypeError:
+#        print("Could not set imagej_metadata")
     # info = json.loads(imagej_metadata['Info'])
     # Construct the correct one here
     # info['AxisOrder'] = ['position', 'time', 'z', 'channel']
