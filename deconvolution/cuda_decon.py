@@ -251,8 +251,8 @@ def decon_ome_stack(file_dir, params=None):
                             padding = (params.kernel['kernel'].shape[0] - kernel_shape[0] + 1)//2
                             if padding > 0:
                                 params.kernel['kernel'] = params.kernel['kernel'][padding+1:-padding]
-                        print(params.kernel['kernel'].shape[0], " and ", kernel_shape[0])
-                        print(padding)
+                            print(params.kernel['kernel'].shape[0], " and ", kernel_shape[0])
+                            print(padding)
                         # params = CudaParams(background=background, shape=kernel_shape, ndim=ndim, z_step=z_step)
                         decon[timepoint, slices[0]+OVERLAP//2:slices[1], channel, :, :] = richardson_lucy(data_here, params=params)[OVERLAP//2:, :, :]
                     else:
