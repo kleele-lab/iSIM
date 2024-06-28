@@ -16,8 +16,14 @@ import cuda_decon
 # Import
 folder = sys.argv[1]
 
-files = Path(folder).rglob('*.ome.tif')
-
+def list_files(dir):
+    r = []
+    for root, dirs, files in os.walk(dir):
+        for name in files:
+            if name.endswith('.ome.tif'):
+                if not 'decon' in name:
+                    r.append(os.path.join(root, name))
+    return r
 
 parameters = {
     'background': "median",
@@ -26,10 +32,11 @@ parameters = {
 # background      > 3: fixed value
 # background 'median': median of each z-stack as bg
 
-for file in files:
-    print(file.name) 
-    if not 'decon' in file.name:
+img_list = list_files(folder)
+print("Found images:")
+print(*img_list, sep = "\n")
+print("STARTING DECON!")
 
-        print(file.name)
-        print(file.as_posix())
-        cuda_decon.decon_ome_stack(file.as_posix(), params=parameters)
+for file in img_list:
+    print(file) 
+    cuda_decon.decon_ome_stack(file, params=parameters)

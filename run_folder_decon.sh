@@ -7,9 +7,10 @@
 
 module purge
 
-module load gcc/8.2.0
-module load python_gpu/3.11.2
-module load cuda/11.8.0
+module load stack/2024-06
+module load gcc
+module load python_cuda/3.11.6
+module load cuda
 module load cudnn
 
 
@@ -30,16 +31,7 @@ fi
 cd deconvolution
 
 # Check for images in mother dir
-for d in $1/*/ ; do
-        python script_folder.py $d
-done
-
-for f in $1/ ; do
-	if [[ "$f" == *.ome.tif ]]
-        then
-                python script_image.py $f
-        fi
-done
+python script_folder.py $1
 
 # Return to initial location
 cd ..

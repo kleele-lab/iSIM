@@ -130,11 +130,11 @@ def decon_ome_stack(file_dir, params=None):
     data = None
     with tifffile.TiffFile(file_dir) as tif: # , is_mmstack=False, is_ome=True
         imagej_metadata = tif.imagej_metadata
-      #print('header 4 :', tif._fh.read(4))
+        #print('header 4 :', tif._fh.read(4))
         #print('header[:2]: ', tif._fh.read(4)[:2])
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         old_metadata = tif.ome_metadata
-       #print(old_metadata)
+        #print(old_metadata)
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
         size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
         size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
@@ -176,6 +176,9 @@ def decon_ome_stack(file_dir, params=None):
         data = np.expand_dims(data, 1)
     if size_c == 1:
         data = np.expand_dims(data, 2)
+
+    if size_t != data.shape[0]:
+        size_t = data.shape[0]
     print("SHAPE", data.shape)
 
     # Make data odd shaped

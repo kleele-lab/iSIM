@@ -8,9 +8,10 @@
 
 module purge
 
-module load gcc/8.2.0
-module load python_gpu/3.11.2
-module load cuda/11.8.0
+module load stack/2024-06
+module load gcc
+module load python_cuda/3.11.6
+module load cuda
 module load cudnn
 
 # Make sure there is only one argument, i.e., folder path
@@ -36,7 +37,6 @@ cd deconvolution
 
 # Run decon
 python script_image.py $1
-
 
 # Return to initial location
 cd ..
