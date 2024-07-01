@@ -11,7 +11,7 @@ module load stack/2024-06
 module load gcc
 module load python_cuda/3.11.6
 module load cuda
-module load cudnn
+module load cudnn/8.9.7.29-12
 
 
 if [ $# -eq 0 ];
@@ -25,7 +25,6 @@ then
 else
   echo "Reading folder: $1"
 fi
-
 
 # Enter folder with python script
 cd deconvolution

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from prepare import prepare_decon, get_filter_zone
 from dataclasses import dataclass
 # import tensorflow_probability as tfp
-# import tensorflow as tf
+import tensorflow as tf
 import h5py as h
 
 import tifffile
@@ -202,6 +202,7 @@ def decon_ome_stack(file_dir, params=None):
     my_slices = None
     if ndim == 3:
         n_pixels = np.prod(data[0, : ,0, :, :].shape)
+        
         print(n_pixels)
         if n_pixels > SIZE_LIMIT:
             n_stacks = np.ceil(n_pixels/SIZE_LIMIT)
@@ -224,7 +225,7 @@ def decon_ome_stack(file_dir, params=None):
         except (AttributeError, KeyError) as e:
             print("No destripe specified.")
             destripe_zones = get_filter_zone
-
+     
     params = CudaParams(background=background, shape=kernel_shape, ndim=ndim, z_step=z_step, destripe=destripe_zones)
 
     decon = np.empty_like(data)
