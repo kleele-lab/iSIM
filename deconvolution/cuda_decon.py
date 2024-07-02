@@ -328,9 +328,12 @@ def decon_ome_stack(file_dir, params=None):
 #                    (286,'float',1, 12342.2, True)
 #                    ]
 #                )
-    hf = h.File(os.path.join(os.path.dirname(file_dir), out_file[0] + "_decon.h5"), 'w')
-    hf.create_dataset('data',data=decon)
-    hf.close()
+  
+    ### Commented out due to working io.imsave as ome-TIFF above -> saving data storage
+    #hf = h.File(os.path.join(os.path.dirname(file_dir), out_file[0] + "_decon.h5"), 'w')
+    #hf.create_dataset('data',data=decon)
+    #hf.close()
+
     # Write metadata to the prepared file
 #    my_mdInfo = xmltodict.unparse(mdInfo).encode(encoding='UTF-8', errors='strict')
 #    tifffile.tiffcomment(os.path.join(os.path.dirname(file_dir), out_file), comment=imagej_metadata) # my_mdInfo)
