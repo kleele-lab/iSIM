@@ -8,12 +8,16 @@
 module purge
 
 module load stack/2024-06
-module load gcc
-module load python_cuda/3.11.6
+module load gcc/8.2.0
+module load python_cuda/3.11.2
 module load cuda
-module load cudnn/8.9.7.29-12
+module load cudnn/8.9.2.26
 
+# Avoiding the JIT error
+export XLA_FLAGS=--xla_gpu_cuda_data_dir=$CUDA_EULER_ROOT
+export CUDA_DIR=$CUDA_EULER_ROOT
 
+# Checking the inputs
 if [ $# -eq 0 ];
 then
   echo "$0: Missing arguments"

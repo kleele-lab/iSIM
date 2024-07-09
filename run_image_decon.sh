@@ -14,6 +14,10 @@ module load python_cuda/3.11.6
 module load cuda
 module load cudnn/8.9.7.29-12
 
+# Avoiding the JIT error
+export XLA_FLAGS=--xla_gpu_cuda_data_dir=$CUDA_EULER_ROOT
+export CUDA_DIR=$CUDA_EULER_ROOT
+
 # Make sure there is only one argument, i.e., folder path
 if [ $# -eq 0 ];
 then
