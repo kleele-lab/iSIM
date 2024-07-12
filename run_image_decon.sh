@@ -1,6 +1,5 @@
 #!/bin/bash
 
-#SBATCH --tmp=5000
 #SBATCH --ntasks=1
 #SBATCH --mem-per-cpu=16G
 #SBATCH --gpus=1
@@ -9,9 +8,9 @@
 module purge
 
 module load stack/2024-06
-module load gcc
-module load python_cuda/3.11.6
-module load cuda
+module load gcc/12.2.0
+module load python_cuda/3.9.18
+module load cuda/12.1.1
 module load cudnn/8.9.7.29-12
 
 # Avoiding the JIT error
