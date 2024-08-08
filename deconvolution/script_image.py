@@ -26,9 +26,8 @@ parameters = {
 # background 'median': median of each z-stack as bg
 
 for file in files:
-
-    if not 'decon' in file.name:
-
-        print(file.name)
-        print(file.as_posix())
-        cuda_decon.decon_ome_stack(file.as_posix(), params=parameters)
+    if not file.name.startswith('._'):
+        if not 'decon' in file.name:
+            print(file.name)
+            print(file.as_posix())
+            cuda_decon.decon_ome_stack(file.as_posix(), params=parameters)
