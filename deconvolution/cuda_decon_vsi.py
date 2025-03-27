@@ -68,7 +68,7 @@ def import_vsi(image_path):
     X = int(metadata['OME']['Image'][0]['Pixels']['@SizeX'])
     Y = int(metadata['OME']['Image'][0]['Pixels']['@SizeY'])
     C = int(metadata['OME']['Image'][0]['Pixels']['@SizeC'])
-    z_step = float(metadata['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
+    #z_step = float(metadata['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
 
     # loop over z and t
     for t in range(T):
@@ -77,7 +77,7 @@ def import_vsi(image_path):
             img.append(bf.load_image(image_path,z=z,t=t, rescale=False))
     
     # make numpy array and move channels axis --> shape = TZCYX 
-    return np.moveaxis(np.array(img),-1,-3), (T,Z,C,Y,X), z_step
+    return np.moveaxis(np.array(img),-1,-3), (T,Z,C,Y,X)
 
 @dataclass
 class CudaParams():
@@ -158,10 +158,13 @@ def init_algo(image):
 def decon_ome_stack(file_dir, save_dir, params=None):
     data = None
 
-    data, meta, z_step = import_vsi(file_dir) 
+    data, meta = import_vsi(file_dir) 
     size_c = meta[2]
     size_t = meta[0]
     size_z = meta[1]
+
+    # dont get why there is no z-step in the metadata
+    z_step = 0.2
 
     dim_order = 'TZCYX'
     
