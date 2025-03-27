@@ -169,7 +169,9 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     dim_order = 'TZCYX'
     
     print(data.shape)
-    print(size_t, size_z, size_c)
+    print('size T', size_t)
+    print('size Z', size_z)
+    print('size C', size_c)
     print(dim_order)
 
     ndim = 2 if size_z == 1 else 3
@@ -190,6 +192,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
 
     if size_t != data.shape[0]:
         size_t = data.shape[0]
+
     print("SHAPE", data.shape)
 
     # Make data odd shaped
@@ -284,7 +287,9 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     out_file = os.path.basename(file_dir).replace('.vsi', '_decon.tif')
 
     # Naive attempt to save as tiff
-    io.imsave(os.path.join(save_dir, out_file), decon)
+    #io.imsave(os.path.join(save_dir, out_file), decon)
+
+    tifffile.imwrite(out_file, decon, bigtiff=True)
 
 
 
