@@ -77,6 +77,8 @@ def import_vsi(image_path):
             img.append(bf.load_image(image_path,z=z,t=t, rescale=False))
     
     # make numpy array and move channels axis --> shape = TZCYX 
+    jb.kill_vm()
+
     return np.moveaxis(np.array(img),-1,-3), (T,Z,C,Y,X)
 
 @dataclass
