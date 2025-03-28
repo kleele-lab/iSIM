@@ -291,6 +291,9 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     # Naive attempt to save as tiff
     #io.imsave(os.path.join(save_dir, out_file), decon)
 
+    # reshape data TZCYX and remove axes that have only 1 length
+    decon = np.squeeze(np.moveaxis(decon, -1, -3))
+
     tifffile.imwrite(os.path.join(save_dir,out_file), decon, bigtiff=True)
 
 
