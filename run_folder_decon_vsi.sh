@@ -3,7 +3,7 @@
 #SBATCH --ntasks=1
 #SBATCH --mem-per-cpu=32G
 #SBATCH --gpus=1
-#SBATCH --gres=gpumem:16G
+#SBATCH --gres=gpumem:32G
 
 module purge
 
