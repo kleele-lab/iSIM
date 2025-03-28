@@ -291,7 +291,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     # Naive attempt to save as tiff
     #io.imsave(os.path.join(save_dir, out_file), decon)
 
-    tifffile.imwrite(out_file, decon, bigtiff=True)
+    tifffile.imwrite(os.path.join(save_dir,out_file), decon, bigtiff=True)
 
 
 
