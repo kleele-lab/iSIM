@@ -213,7 +213,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     data = data[:, :, :, :crop[3][1], :crop[4][1]]
 
     # Check if data might be too big for GPU and slice - removed this. 
-    #my_slices = None
+    my_slices = None
     #if ndim == 3:
     #    n_pixels = np.prod(data[0, : ,0, :, :].shape)
     #    
