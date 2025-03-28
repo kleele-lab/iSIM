@@ -212,21 +212,21 @@ def decon_ome_stack(file_dir, save_dir, params=None):
             crop[dim][1] = data.shape[dim]
     data = data[:, :, :, :crop[3][1], :crop[4][1]]
 
-    # Check if data might be too big for GPU and slice
-    my_slices = None
-    if ndim == 3:
-        n_pixels = np.prod(data[0, : ,0, :, :].shape)
-        
-        print(n_pixels)
-        if n_pixels > SIZE_LIMIT:
-            n_stacks = np.ceil(n_pixels/SIZE_LIMIT)
-            print("n_stacks ", n_stacks)
-            n_slices = round(size_z/n_stacks)
-            n_slices = n_slices - 1 if n_slices%2 == 0 else n_slices
-            print("n_slices ", n_slices)
-            print("z ", size_z)
-            my_slices = get_overlapping_slices(size_z, n_slices, OVERLAP)
-            print(my_slices)
+    # Check if data might be too big for GPU and slice - removed this. 
+    #my_slices = None
+    #if ndim == 3:
+    #    n_pixels = np.prod(data[0, : ,0, :, :].shape)
+    #    
+    #    print(n_pixels)
+    #    if n_pixels > SIZE_LIMIT:
+    #        n_stacks = np.ceil(n_pixels/SIZE_LIMIT)
+    #        print("n_stacks ", n_stacks)
+    #        n_slices = round(size_z/n_stacks)
+    #        n_slices = n_slices - 1 if n_slices%2 == 0 else n_slices
+    #        print("n_slices ", n_slices)
+    #        print("z ", size_z)
+    #        my_slices = get_overlapping_slices(size_z, n_slices, OVERLAP)
+    #        print(my_slices)
 
     kernel_shape = data.shape[-2:] if ndim==2 else [np.min([17, size_z]), *data.shape[-2:]]
     # Decon
