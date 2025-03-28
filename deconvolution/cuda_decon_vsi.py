@@ -55,6 +55,7 @@ def main():
 # added: import of vsi formats
 
 def import_vsi(image_path):
+    jb.start_vm(class_path=bf.JARS)
 
     # path = path to .vsi image file
     img = []
@@ -324,6 +325,7 @@ def get_overlapping_slices(total_slices, slice_step, overlap):
         slice_now = slice_now + slice_step
     return my_bins
 
+jb.kill_vm()
 
 if __name__ == '__main__':
     main()

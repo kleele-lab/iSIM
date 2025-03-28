@@ -44,7 +44,6 @@ save_dir = os.path.join(folder, 'decon_tifs')
 if not os.path.exists(save_dir):
     os.mkdir(save_dir)
 
-jb.start_vm(class_path=bf.JARS)
 
 for file in img_list:
     print(file) 
