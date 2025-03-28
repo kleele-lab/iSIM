@@ -55,7 +55,6 @@ def main():
 # added: import of vsi formats
 
 def import_vsi(image_path):
-    jb.start_vm(class_path=bf.JARS)
 
     # path = path to .vsi image file
     img = []
@@ -77,7 +76,6 @@ def import_vsi(image_path):
             img.append(bf.load_image(image_path,z=z,t=t, rescale=False))
     
     # make numpy array and move channels axis --> shape = TZCYX 
-    jb.kill_vm()
 
     return np.moveaxis(np.array(img),-1,-3), (T,Z,C,Y,X)
 
@@ -287,6 +285,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     print("DECON SHAPE ", decon.shape)
 
     out_file = os.path.basename(file_dir).replace('.vsi', '_decon.tif')
+    print(out_file)
 
     # Naive attempt to save as tiff
     #io.imsave(os.path.join(save_dir, out_file), decon)

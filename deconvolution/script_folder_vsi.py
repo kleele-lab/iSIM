@@ -3,6 +3,8 @@ import sys
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import tensorflow
+import javabridge as jb
+import bioformats as bf
 
 gpus = tensorflow.config.list_physical_devices('GPU')
 for gpu in gpus:
@@ -42,6 +44,10 @@ save_dir = os.path.join(folder, 'decon_tifs')
 if not os.path.exists(save_dir):
     os.mkdir(save_dir)
 
+jb.start_vm(class_path=bf.JARS)
+
 for file in img_list:
     print(file) 
     cuda_decon_vsi.decon_ome_stack(file, save_dir, params=parameters)
+
+jb.kill_vm()
