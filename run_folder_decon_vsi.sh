@@ -4,6 +4,7 @@
 #SBATCH --mem-per-cpu=32G
 #SBATCH --gpus=1
 #SBATCH --gres=gpumem:32G
+#SBATCH --time=4:00:00
 
 module purge
 
