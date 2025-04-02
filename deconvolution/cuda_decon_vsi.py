@@ -283,6 +283,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
         decon = decon[:, :original_size_data[1], :, :, :]
     if original_size_data != decon.shape:
         decon = np.pad(decon, pad)
+    
     print("DECON SHAPE ", decon.shape)
 
     out_file = os.path.basename(file_dir).replace('.vsi', '_decon.tif')
@@ -292,7 +293,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     #io.imsave(os.path.join(save_dir, out_file), decon)
 
     # reshape data TZCYX and remove axes that have only 1 length
-    decon = np.squeeze(np.moveaxis(decon, -1, -3))
+    decon = np.squeeze(decon)
 
     tifffile.imwrite(os.path.join(save_dir,out_file), decon, bigtiff=True)
 
