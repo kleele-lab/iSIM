@@ -70,15 +70,22 @@ def import_vsi(image_path):
     C = int(metadata['OME']['Image'][0]['Pixels']['@SizeC'])
     #z_step = float(metadata['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
 
-    # loop over z and t
+    # loop over t, z, c
     for t in range(T):
         for z in range(Z):
             # rescale = False otherwise it will scale from 0-1 
-            img.append(bf.load_image(image_path,z=z,t=t, rescale=False))
+            # apply top-hat here. with sigma = 20
+            load_img = bf.load_image(image_path,z=z,t=t, rescale=False)
+            # apply top hat over each color: set sigma to 
+            img_processed = []
+            for channel in range(0,C):
+                img_processed.append(load_img[:,:,channel])
+
+            img.append(img_processed)
     
     # make numpy array and move channels axis --> shape = TZCYX 
 
-    return np.moveaxis(np.array(img),-1,-3), (T,Z,C,Y,X)
+    return np.array(img), (T,Z,C,Y,X), metadata
 
 @dataclass
 class CudaParams():
@@ -159,7 +166,7 @@ def init_algo(image):
 def decon_ome_stack(file_dir, save_dir, params=None):
     data = None
 
-    data, meta = import_vsi(file_dir) 
+    data, meta, img_metadata = import_vsi(file_dir) 
     size_c = meta[2]
     size_t = meta[0]
     size_z = meta[1]
@@ -286,7 +293,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     
     print("DECON SHAPE ", decon.shape)
 
-    out_file = os.path.basename(file_dir).replace('.vsi', '_decon.tif')
+    out_file = os.path.basename(file_dir).replace('.vsi', '_decon.ome.tif')
     print(out_file)
 
     # Naive attempt to save as tiff
@@ -295,7 +302,7 @@ def decon_ome_stack(file_dir, save_dir, params=None):
     # reshape data TZCYX and remove axes that have only 1 length
     decon = np.squeeze(decon)
 
-    tifffile.imwrite(os.path.join(save_dir,out_file), decon, bigtiff=True)
+    tifffile.imwrite(os.path.join(save_dir,out_file), data=decon, bigtiff=True, metadata=img_metadata)
 
 
 
