@@ -47,6 +47,6 @@ if not os.path.exists(save_dir):
 
 for file in img_list:
     print(file) 
-    cuda_decon_vsi.decon_ome_stack(file, save_dir, params=parameters)
+    cuda_decon_vsi_tophat.decon_ome_stack(file, save_dir, params=parameters)
 
 jb.kill_vm()
