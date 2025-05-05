@@ -89,14 +89,15 @@ def import_vsi(image_path):
             # rescale = False otherwise it will scale from 0-1 
             # apply top-hat here. with sigma = 20
             load_img = bf.load_image(image_path,z=z,t=t, rescale=False)
-            # apply top hat over each color: set sigma to 
+            # apply top hat over each color: set sigma to 20
             img_processed = []
-            for channel in range(0,C):
-                img_processed.append(top_hat(load_img[:,:,channel],sigma=20))
+            if C > 0:
+                for channel in range(0,C):
+                    img_processed.append(top_hat(load_img[:,:,channel],sigma=20))
+            else:
+                img_processed.append(top_hat(load_img, sigma=20))
 
             img.append(img_processed)
-    
-    # make numpy array and move channels axis --> shape = TZCYX 
 
     return np.array(img), (T,Z,C,Y,X), metadata
 

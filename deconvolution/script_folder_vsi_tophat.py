@@ -40,7 +40,7 @@ print("Found images:")
 print(*img_list, sep = "\n")
 print("STARTING DECON!")
 
-save_dir = os.path.join(folder, 'decon_tifs')
+save_dir = os.path.join(folder, 'decon_tifs_tophat')
 if not os.path.exists(save_dir):
     os.mkdir(save_dir)
 
