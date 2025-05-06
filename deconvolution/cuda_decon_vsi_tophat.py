@@ -94,10 +94,9 @@ def import_vsi(image_path):
             if C > 1:
                 for channel in range(0,C):
                     img_processed.append(top_hat(load_img[:,:,channel],sigma=20))
+                img.append(img_processed)
             else:
-                img_processed.append(top_hat(load_img, sigma=20))
-
-            img.append(img_processed)
+                img.append(load_img)
 
     return np.array(img), (T,Z,C,Y,X), metadata
 

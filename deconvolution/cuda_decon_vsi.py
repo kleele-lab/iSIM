@@ -80,10 +80,11 @@ def import_vsi(image_path):
             if C > 1:
                 for channel in range(0,C):
                     img_processed.append(load_img[:,:,channel])
-            else:
-                img_processed.append(load_img)
 
-            img.append(img_processed)
+                img.append(img_processed)
+            else:
+                img.append(load_img)
+
     
     # make numpy array and move channels axis --> shape = TZCYX 
 
