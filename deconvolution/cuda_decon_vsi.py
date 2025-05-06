@@ -76,10 +76,12 @@ def import_vsi(image_path):
             # rescale = False otherwise it will scale from 0-1 
             # apply top-hat here. with sigma = 20
             load_img = bf.load_image(image_path,z=z,t=t, rescale=False)
-            # apply top hat over each color: set sigma to 
             img_processed = []
-            for channel in range(0,C):
-                img_processed.append(load_img[:,:,channel])
+            if C > 1:
+                for channel in range(0,C):
+                    img_processed.append(load_img[:,:,channel])
+            else:
+                img_processed.append(load_img)
 
             img.append(img_processed)
     
